@@ -1,4 +1,4 @@
-rom config import PRODUCT_LIMIT
+from config import PRODUCT_LIMIT
 
 def find_products():
 
