@@ -8,7 +8,7 @@ def generate_marketing_text(product_name, link):
             "Content-Type": "application/json"
         }
         data = {
-            "model": "llama3-8b-8192",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {"role": "system", "content": "Eres un experto en marketing de afiliados. Crea textos cortos, atractivos y con emojis para Facebook e Instagram."},
                 {"role": "user", "content": f"Crea un post de marketing para: {product_name}. Link: {link}"}
