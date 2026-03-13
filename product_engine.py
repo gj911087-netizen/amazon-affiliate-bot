@@ -1,32 +1,35 @@
 import requests
-from config import PRODUCT_LIMIT, AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AFFILIATE_TAG
-import bottlenose
-from amazonscraper import AmazonScraper
+from config import PRODUCT_LIMIT, RAPIDAPI_KEY
 
 def find_products():
+    url = "https://real-time-amazon-data.p.rapidapi.com/search"
+
+    querystring = {
+        "query": "tech gadgets",
+        "page": "1",
+        "country": "US"
+    }
+
+    headers = {
+        "X-RapidAPI-Key": RAPIDAPI_KEY,
+        "X-RapidAPI-Host": "real-time-amazon-data.p.rapidapi.com"
+    }
+
     try:
-        amazon = bottlenose.Amazon(
-            AMAZON_ACCESS_KEY,
-            AMAZON_SECRET_KEY,
-            AFFILIATE_TAG,
-            Region="US",
-            Parser=lambda text: text
-        )
-        # Buscar productos más vendidos
-        response = amazon.BrowseNodeLookup(
-            BrowseNodeId="bestsellers",
-            ResponseGroup="TopSellers"
-        )
-        # Extraer ASINs
-        import xml.etree.ElementTree as ET
-        root = ET.fromstring(response)
-        asins = [item.text for item in root.iter("ASIN")]
+        response = requests.get(url, headers=headers, params=querystring)
+        data = response.json()
+
+        products = data["data"]["products"]
+        asins = [product["asin"] for product in products]
+
         return asins[:PRODUCT_LIMIT]
+
     except Exception as e:
-        print("Error Amazon API:", e)
-        # Productos de respaldo reales
+        print("Error RapidAPI:", e)
+
+        # productos de respaldo
         return [
-            "B09G9FPHY6",  # Echo Dot
-            "B08N5WRWNW",  # Fire TV Stick
-            "B07XJ8C8F5"   # Kindle
+            "B09G9FPHY6",
+            "B08N5WRWNW",
+            "B07XJ8C8F5"
         ][:PRODUCT_LIMIT]
