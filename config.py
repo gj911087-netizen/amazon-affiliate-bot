@@ -3,9 +3,15 @@ import os
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 FACEBOOK_TOKEN = os.getenv("FACEBOOK_TOKEN")
 INSTAGRAM_TOKEN = os.getenv("INSTAGRAM_TOKEN")
-
 AFFILIATE_TAG = "todoenunoofic-20"
 AMAZON_DOMAIN = "https://www.amazon.com"
-
 POST_INTERVAL = 3600
 PRODUCT_LIMIT = 5
+
+# IDs necesarios
+PAGE_ID = os.getenv("PAGE_ID")
+INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
+
+# Amazon API (si la usas)
+AMAZON_ACCESS_KEY = os.getenv("AMAZON_ACCESS_KEY")
+AMAZON_SECRET_KEY = os.getenv("AMAZON_SECRET_KEY")
