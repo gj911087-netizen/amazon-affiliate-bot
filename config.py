@@ -1,3 +1,9 @@
+import os
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+FACEBOOK_TOKEN = os.getenv("FACEBOOK_TOKEN")
+INSTAGRAM_TOKEN = os.getenv("INSTAGRAM_TOKEN")
+
 AFFILIATE_TAG = "todoenunoofic-20"
 AMAZON_DOMAIN = "https://www.amazon.com"
 
