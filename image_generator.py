@@ -1,7 +1,3 @@
-def generate_image(product_name):
-
+def generate_image(product_name, image_url=None):
     print(f"Generando imagen para {product_name}")
-
-    image_path = "product_image.png"
-
-    return image_path
+    return image_url
