@@ -1,24 +1,11 @@
 import time
 import os
+import sys
 
-# ✅ Verificar variables de entorno al arrancar
+sys.stderr = sys.stdout
+
 print("🔍 Verificando configuración...")
-required_vars = [
-    "FACEBOOK_TOKEN",
-    "PAGE_ID", 
-    "INSTAGRAM_TOKEN",
-    "INSTAGRAM_ACCOUNT_ID",
-    "GROQ_API_KEY",
-    "RAPIDAPI_KEY"
-]
-missing = [var for var in required_vars if not os.getenv(var)]
-if missing:
-    print(f"❌ Variables faltantes: {missing}")
-    print("⛔ Bot detenido — configura las variables de entorno")
-    exit(1)
-print("✅ Configuración OK")
 
-# ← Todo lo demás va DESPUÉS de aquí
 from product_engine import find_products
 from affiliate_links import generate_affiliate_link
 from marketing_ai import generate_marketing_text
@@ -28,33 +15,46 @@ from analytics import log_post
 from config import POST_INTERVAL
 
 print("🤖 Bot de afiliados iniciado...")
+
 while True:
     try:
         products = find_products()
         if not products:
-            print("⚠️ No se encontraron productos")
+            print("⚠️ No se encontraron productos, reintentando en 5 min...")
             time.sleep(300)
             continue
+
         for product in products:
             try:
                 asin = product.get("asin")
                 name = product.get("product_title", "Producto Amazon")
                 image_url = product.get("product_photo")
+
                 if not asin:
                     print("⚠️ Producto sin ASIN, saltando...")
                     continue
-                print(f"🔎 Procesando producto: {name}")
+
+                print(f"🔎 Procesando: {name}")
+                print(f"🖼️ Imagen URL: {image_url}")
+
                 link = generate_affiliate_link(asin)
                 text = generate_marketing_text(name, link)
                 image = generate_image(name, image_url)
                 post_to_social(text, image)
                 log_post(name, link)
-                print(f"✅ Producto publicado: {name}")
-                print(f"🔗 Link afiliado: {link}")
+
+                print(f"✅ Publicado: {name}")
                 print(f"⏳ Esperando {POST_INTERVAL} segundos...")
                 time.sleep(POST_INTERVAL)
+
             except Exception as e:
-                print("❌ Error procesando producto:", e)
+                print(f"❌ Error en producto: {e}")
+                import traceback
+                traceback.print_exc()  # ← muestra el error completo
+                time.sleep(60)
+
     except Exception as e:
-        print("❌ Error general del bot:", e)
+        print(f"❌ Error general: {e}")
+        import traceback
+        traceback.print_exc()
         time.sleep(300)
