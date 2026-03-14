@@ -1,11 +1,23 @@
 import requests
+import random
 from config import PRODUCT_LIMIT, RAPIDAPI_KEY
+
+QUERIES = [
+    "tech gadgets best sellers",
+    "amazon gadgets trending",
+    "cool tech gifts",
+    "smart home devices",
+    "wireless earbuds best sellers",
+    "portable charger amazon",
+    "phone accessories trending",
+    "laptop accessories best sellers"
+]
 
 def find_products():
     url = "https://real-time-amazon-data.p.rapidapi.com/search"
     querystring = {
-        "query": "tech gadgets best sellers",
-        "page": "1",
+        "query": random.choice(QUERIES),        # ← query aleatoria
+        "page": str(random.randint(1, 3)),       # ← página aleatoria
         "country": "US",
         "sort_by": "RELEVANCE"
     }
@@ -21,7 +33,6 @@ def find_products():
         for p in products[:PRODUCT_LIMIT]:
             if not isinstance(p, dict):
                 continue
-            # ✅ Intenta múltiples campos de foto
             photo = (
                 p.get("product_photo") or
                 p.get("product_main_image_url") or
@@ -33,7 +44,7 @@ def find_products():
                 "product_title": p.get("product_title", "Producto Amazon"),
                 "product_photo": photo
             }
-            if product["asin"]:
+            if product["asin"] and product["product_photo"]:  # ← solo con imagen
                 clean_products.append(product)
         return clean_products if clean_products else _fallback_products()
     except Exception as e:
