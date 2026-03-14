@@ -7,39 +7,56 @@ from autoposter import post_to_social
 from analytics import log_post
 from config import POST_INTERVAL
 
-products = find_products()
+print("🤖 Bot de afiliados iniciado...")
 
-for product in products:
+while True:
     try:
-        # Datos del producto
-        asin = product.get("asin")
-        name = product.get("product_title", "Producto Amazon")
-        image_url = product.get("product_photo")
+        products = find_products()
 
-        if not asin:
-            print("⚠️ Producto sin ASIN, saltando...")
+        if not products:
+            print("⚠️ No se encontraron productos")
+            time.sleep(300)
             continue
 
-        # Link afiliado
-        link = generate_affiliate_link(asin)
+        for product in products:
+            try:
+                # Datos del producto
+                asin = product.get("asin")
+                name = product.get("product_title", "Producto Amazon")
+                image_url = product.get("product_photo")
 
-        # Texto de marketing
-        text = generate_marketing_text(name, link)
+                if not asin:
+                    print("⚠️ Producto sin ASIN, saltando...")
+                    continue
 
-        # Imagen
-        image = generate_image(name, image_url)
+                print(f"🔎 Procesando producto: {name}")
 
-        # Publicar
-        post_to_social(text, image)
+                # Generar link afiliado
+                link = generate_affiliate_link(asin)
 
-        # Guardar analytics
-        log_post(name, link)
+                # Generar texto con IA
+                text = generate_marketing_text(name, link)
 
-        print(f"✅ Producto publicado: {name}")
-        print(f"🔗 {link}")
+                # Obtener imagen
+                image = generate_image(name, image_url)
 
-        print(f"⏳ Esperando {POST_INTERVAL} segundos...")
-        time.sleep(POST_INTERVAL)
+                # Publicar en redes
+                post_to_social(text, image)
+
+                # Guardar analytics
+                log_post(name, link)
+
+                print(f"✅ Producto publicado: {name}")
+                print(f"🔗 Link afiliado: {link}")
+
+                print(f"⏳ Esperando {POST_INTERVAL} segundos...")
+                time.sleep(POST_INTERVAL)
+
+            except Exception as e:
+                print("❌ Error procesando producto:", e)
 
     except Exception as e:
-        print("❌ Error:", e)
+        print("❌ Error general del bot:", e)
+
+        # Espera antes de intentar otra vez
+        time.sleep(300)
