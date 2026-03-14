@@ -3,9 +3,11 @@ import os
 import sys
 import json
 import random
+import redis
 
 sys.stderr = sys.stdout
 print("INICIO", flush=True)
+
 try:
     from product_engine import find_products
     print("OK product_engine", flush=True)
@@ -22,25 +24,29 @@ try:
     from config import POST_INTERVAL
     print("OK config", flush=True)
 except Exception as e:
-    print("ERROR AL IMPORTAR:", e, flush=True)
+    print(f"❌ ERROR AL IMPORTAR: {e}", flush=True)
     import traceback
     traceback.print_exc()
     time.sleep(99999)
 
-# ── Control de productos ya publicados ──────────────────
-POSTED_FILE = "posted.json"
+# ── Redis para historial permanente ─────────────────────
+REDIS_URL = os.getenv("REDIS_URL")
+r = redis.from_url(REDIS_URL) if REDIS_URL else None
 
-def load_posted():
-    if os.path.exists(POSTED_FILE):
-        with open(POSTED_FILE, "r") as f:
-            return json.load(f)
-    return []
+def already_posted(asin):
+    if r:
+        return r.sismember("posted_asins", asin)
+    return False
 
-def save_posted(asin):
-    posted = load_posted()
-    posted.append(asin)
-    with open(POSTED_FILE, "w") as f:
-        json.dump(posted, f)
+def mark_posted(asin):
+    if r:
+        r.sadd("posted_asins", asin)
+        total = r.scard("posted_asins")
+        print(f"📦 Total publicados historial: {total}", flush=True)
+        # Si llega a 2000 reinicia para no llenarse
+        if total >= 2000:
+            r.delete("posted_asins")
+            print("🔄 Historial reiniciado", flush=True)
 # ────────────────────────────────────────────────────────
 
 print("🤖 Bot iniciado", flush=True)
@@ -49,48 +55,45 @@ while True:
     try:
         products = find_products()
         if not products:
+            print("⚠️ Sin productos, reintentando en 5 min...", flush=True)
             time.sleep(300)
             continue
 
-        # Filtrar productos ya publicados
-        posted = load_posted()
-        nuevos = [p for p in products if p.get("asin") not in posted]
+        # Filtrar ya publicados
+        nuevos = [p for p in products if not already_posted(p.get("asin", ""))]
 
-        # Si ya se publicaron todos, reiniciar el historial
         if not nuevos:
-            print("🔄 Todos publicados, reiniciando historial...", flush=True)
-            with open(POSTED_FILE, "w") as f:
-                json.dump([], f)
-            nuevos = products
+            print("🔄 Todos estos publicados, buscando más...", flush=True)
+            time.sleep(30)
+            continue
 
-        # Elegir UN producto aleatorio
+        # Elegir producto aleatorio
         product = random.choice(nuevos)
+        asin = product.get("asin")
+        name = product.get("product_title", "Producto Amazon")
+        image_url = product.get("product_photo")
 
-        try:
-            asin = product.get("asin")
-            name = product.get("product_title", "Producto Amazon")
-            image_url = product.get("product_photo")
+        if not asin or not image_url:
+            print("⚠️ Producto sin ASIN o imagen, saltando...", flush=True)
+            time.sleep(30)
+            continue
 
-            if not asin:
-                time.sleep(60)
-                continue
+        print(f"🔎 Procesando: {name}", flush=True)
+        print(f"🖼️ Imagen: {image_url}", flush=True)
 
-            print(f"🔎 {name}", flush=True)
-            link = generate_affiliate_link(asin)
-            text = generate_marketing_text(name, link)
-            image = generate_image(name, image_url)
-            post_to_social(text, image)
-            log_post(name, link)
-            save_posted(asin)  # ← guardar ASIN como publicado
-            print(f"✅ Publicado: {name}", flush=True)
-            time.sleep(POST_INTERVAL)
+        link = generate_affiliate_link(asin)
+        text = generate_marketing_text(name, link)
+        image = generate_image(name, image_url)
+        post_to_social(text, image)
+        log_post(name, link)
+        mark_posted(asin)
 
-        except Exception as e:
-            print(f"❌ Error: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
-            time.sleep(60)
+        print(f"✅ Publicado: {name}", flush=True)
+        print(f"⏰ Próxima en {POST_INTERVAL//60} minutos", flush=True)
+        time.sleep(POST_INTERVAL)
 
     except Exception as e:
-        print(f"❌ Error general: {e}", flush=True)
-        time.sleep(300)
+        print(f"❌ Error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        time.sleep(60)
