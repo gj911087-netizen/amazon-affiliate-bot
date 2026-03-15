@@ -39,112 +39,73 @@ def get_headers():
         "Upgrade-Insecure-Requests": "1",
     }
 
-def extract_products_from_html(html):
+def get_product_details(asin):
     """
-    Extrae ASIN, título e imagen del MISMO bloque HTML
-    para garantizar que los tres datos correspondan al mismo producto
+    Obtiene título e imagen DIRECTAMENTE de la página del producto en Amazon
+    Así garantizamos que imagen y título son del mismo producto
     """
-    products = []
-    seen_asins = set()
+    url = f"https://www.amazon.com/dp/{asin}"
+    try:
+        delay = random.uniform(2, 4)
+        time.sleep(delay)
+        response = requests.get(url, headers=get_headers(), timeout=15)
+        if response.status_code != 200:
+            return None, None
 
-    # Dividir el HTML en bloques por producto usando data-asin como ancla
-    # Cada bloque contiene toda la info de UN producto
-    blocks = re.split(r'(?=data-asin="[A-Z0-9]{10}")', html)
+        html = response.text
 
-    for block in blocks:
-        if len(products) >= PRODUCT_LIMIT:
-            break
+        # Extraer título
+        title_match = re.search(r'id="productTitle"[^>]*>\s*([^<]{10,})\s*<', html)
+        if not title_match:
+            title_match = re.search(r'"title"\s*:\s*"([^"]{10,})"', html)
+        title = title_match.group(1).strip() if title_match else None
 
-        # 1. Extraer ASIN del bloque
-        asin_match = re.search(r'data-asin="([A-Z0-9]{10})"', block)
-        if not asin_match:
-            continue
-        asin = asin_match.group(1)
-
-        if asin in seen_asins:
-            continue
-
-        # 2. Extraer imagen del MISMO bloque
-        image_match = re.search(
-            r'src="(https://m\.media-amazon\.com/images/I/[A-Za-z0-9%+_.-]+\.(?:jpg|jpeg|png))"',
-            block
-        )
+        # Extraer imagen principal
+        image_match = re.search(r'"hiRes"\s*:\s*"(https://m\.media-amazon\.com/images/I/[^"]+)"', html)
         if not image_match:
-            # Intentar con imagen en atributo data-src
-            image_match = re.search(
-                r'data-src="(https://m\.media-amazon\.com/images/I/[A-Za-z0-9%+_.-]+\.(?:jpg|jpeg|png))"',
-                block
-            )
+            image_match = re.search(r'"large"\s*:\s*"(https://m\.media-amazon\.com/images/I/[^"]+)"', html)
         if not image_match:
-            continue
-        image = image_match.group(1)
+            image_match = re.search(r'id="landingImage"[^>]*src="(https://m\.media-amazon\.com/images/I/[^"]+)"', html)
+        image = image_match.group(1) if image_match else None
 
-        # Filtrar imágenes demasiado pequeñas (iconos, sprites)
-        if any(x in image for x in ['._AC_SR', '._SS', '._SX', '._SY']):
-            # Limpiar parámetros de tamaño para obtener imagen grande
-            image = re.sub(r'\._[^.]+\.', '.', image)
-            if not image.endswith('.jpg'):
-                image += '.jpg'
+        return title, image
 
-        # 3. Extraer título del MISMO bloque
-        title_match = re.search(
-            r'class="[^"]*p13n-sc-truncated[^"]*"[^>]*>([^<]{10,})<',
-            block
-        )
-        if not title_match:
-            title_match = re.search(r'alt="([^"]{10,})"', block)
-        if not title_match:
-            title_match = re.search(r'title="([^"]{10,})"', block)
-        if not title_match:
-            # Usar ASIN como fallback de título
-            continue
-
-        title = title_match.group(1).strip()
-
-        # Filtrar títulos que son claramente navegación o UI
-        skip_words = ["Best Seller", "Customer Review", "Add to Cart", "See more", "Amazon"]
-        if any(w in title for w in skip_words):
-            continue
-
-        products.append({
-            "asin": asin,
-            "product_title": title,
-            "product_photo": image
-        })
-        seen_asins.add(asin)
-        print(f"✅ ASIN:{asin} | {title[:50]}", flush=True)
-
-    return products
+    except Exception as e:
+        print(f"❌ Error obteniendo detalles de {asin}: {e}", flush=True)
+        return None, None
 
 
-def scrape_bestsellers(url, retries=3):
-    for attempt in range(retries):
-        try:
-            delay = random.uniform(3, 7)
-            print(f"⏳ Esperando {delay:.1f}s...", flush=True)
-            time.sleep(delay)
+def get_asins_from_bestsellers(url):
+    """Extrae solo los ASINs de la página de Best Sellers"""
+    try:
+        delay = random.uniform(3, 6)
+        print(f"⏳ Esperando {delay:.1f}s...", flush=True)
+        time.sleep(delay)
 
-            print(f"📡 Scraping: {url} (intento {attempt+1})", flush=True)
-            response = requests.get(url, headers=get_headers(), timeout=20)
+        print(f"📡 Scraping: {url}", flush=True)
+        response = requests.get(url, headers=get_headers(), timeout=20)
 
-            if response.status_code == 200:
-                return response.text
-            elif response.status_code == 404:
-                print(f"⚠️ Página no existe (404), saltando...", flush=True)
-                return None
-            elif response.status_code in [503, 429]:
-                wait = (attempt + 1) * 30
-                print(f"🚫 Bloqueado, esperando {wait}s...", flush=True)
-                time.sleep(wait)
-            else:
-                print(f"⚠️ Status {response.status_code}", flush=True)
-                time.sleep(10)
+        if response.status_code == 200:
+            asins = re.findall(r'data-asin="([A-Z0-9]{10})"', response.text)
+            # Eliminar duplicados manteniendo orden
+            seen = set()
+            unique_asins = []
+            for a in asins:
+                if a not in seen:
+                    seen.add(a)
+                    unique_asins.append(a)
+            return unique_asins
+        elif response.status_code == 404:
+            print(f"⚠️ Página no existe (404)", flush=True)
+        elif response.status_code in [503, 429]:
+            print(f"🚫 Bloqueado temporalmente", flush=True)
+        else:
+            print(f"⚠️ Status {response.status_code}", flush=True)
 
-        except Exception as e:
-            print(f"❌ Error: {e}", flush=True)
-            time.sleep(10)
+    except Exception as e:
+        print(f"❌ Error: {e}", flush=True)
 
-    return None
+    return []
 
 
 def find_products():
@@ -157,17 +118,35 @@ def find_products():
             if len(clean_products) >= PRODUCT_LIMIT:
                 break
 
-            html = scrape_bestsellers(url)
-            if html is None:
+            asins = get_asins_from_bestsellers(url)
+            if not asins:
                 continue
 
-            products = extract_products_from_html(html)
-            print(f"📦 Productos extraídos del bloque: {len(products)}", flush=True)
+            print(f"📦 ASINs encontrados: {len(asins)}", flush=True)
 
-            for p in products:
-                if p["asin"] not in seen_asins and len(clean_products) < PRODUCT_LIMIT:
-                    clean_products.append(p)
-                    seen_asins.add(p["asin"])
+            # Mezclar para variedad
+            random.shuffle(asins)
+
+            for asin in asins[:10]:  # Intentar máximo 10 por categoría
+                if len(clean_products) >= PRODUCT_LIMIT:
+                    break
+                if asin in seen_asins:
+                    continue
+
+                print(f"🔍 Obteniendo detalles de ASIN: {asin}", flush=True)
+                title, image = get_product_details(asin)
+
+                if not title or not image:
+                    print(f"⚠️ Sin datos para {asin}, saltando...", flush=True)
+                    continue
+
+                clean_products.append({
+                    "asin": asin,
+                    "product_title": title,
+                    "product_photo": image
+                })
+                seen_asins.add(asin)
+                print(f"✅ ASIN:{asin} | {title[:50]}", flush=True)
 
         if clean_products:
             print(f"✅ Total productos reales de Amazon: {len(clean_products)}", flush=True)
