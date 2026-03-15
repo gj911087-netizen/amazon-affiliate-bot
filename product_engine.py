@@ -1,7 +1,6 @@
 import requests
 import random
 import re
-import json
 import time
 from config import PRODUCT_LIMIT
 
@@ -41,72 +40,79 @@ def get_headers():
     }
 
 def extract_products_from_html(html):
-    """Extrae productos con imagen real del HTML de Amazon Best Sellers"""
+    """
+    Extrae ASIN, título e imagen del MISMO bloque HTML
+    para garantizar que los tres datos correspondan al mismo producto
+    """
     products = []
     seen_asins = set()
 
-    # Buscar bloques de productos en el JSON embebido en el HTML
-    # Amazon guarda los datos en un objeto JS dentro del HTML
-    json_matches = re.findall(r'"asin"\s*:\s*"([A-Z0-9]{10})"[^}]*?"title"\s*:\s*"([^"]{10,})"[^}]*?"image"\s*:\s*"(https://[^"]+)"', html)
+    # Dividir el HTML en bloques por producto usando data-asin como ancla
+    # Cada bloque contiene toda la info de UN producto
+    blocks = re.split(r'(?=data-asin="[A-Z0-9]{10}")', html)
 
-    for asin, title, image in json_matches:
-        if asin in seen_asins or len(products) >= PRODUCT_LIMIT:
+    for block in blocks:
+        if len(products) >= PRODUCT_LIMIT:
             break
-        if not image.startswith("https://m.media-amazon.com") and not image.startswith("https://images-na"):
+
+        # 1. Extraer ASIN del bloque
+        asin_match = re.search(r'data-asin="([A-Z0-9]{10})"', block)
+        if not asin_match:
             continue
+        asin = asin_match.group(1)
+
+        if asin in seen_asins:
+            continue
+
+        # 2. Extraer imagen del MISMO bloque
+        image_match = re.search(
+            r'src="(https://m\.media-amazon\.com/images/I/[A-Za-z0-9%+_.-]+\.(?:jpg|jpeg|png))"',
+            block
+        )
+        if not image_match:
+            # Intentar con imagen en atributo data-src
+            image_match = re.search(
+                r'data-src="(https://m\.media-amazon\.com/images/I/[A-Za-z0-9%+_.-]+\.(?:jpg|jpeg|png))"',
+                block
+            )
+        if not image_match:
+            continue
+        image = image_match.group(1)
+
+        # Filtrar imágenes demasiado pequeñas (iconos, sprites)
+        if any(x in image for x in ['._AC_SR', '._SS', '._SX', '._SY']):
+            # Limpiar parámetros de tamaño para obtener imagen grande
+            image = re.sub(r'\._[^.]+\.', '.', image)
+            if not image.endswith('.jpg'):
+                image += '.jpg'
+
+        # 3. Extraer título del MISMO bloque
+        title_match = re.search(
+            r'class="[^"]*p13n-sc-truncated[^"]*"[^>]*>([^<]{10,})<',
+            block
+        )
+        if not title_match:
+            title_match = re.search(r'alt="([^"]{10,})"', block)
+        if not title_match:
+            title_match = re.search(r'title="([^"]{10,})"', block)
+        if not title_match:
+            # Usar ASIN como fallback de título
+            continue
+
+        title = title_match.group(1).strip()
+
+        # Filtrar títulos que son claramente navegación o UI
+        skip_words = ["Best Seller", "Customer Review", "Add to Cart", "See more", "Amazon"]
+        if any(w in title for w in skip_words):
+            continue
+
         products.append({
             "asin": asin,
-            "product_title": title.strip(),
+            "product_title": title,
             "product_photo": image
         })
         seen_asins.add(asin)
-        print(f"✅ {title[:60]}", flush=True)
-
-    # Si el patrón anterior no funciona, usar patrón alternativo
-    if not products:
-        # Buscar imágenes reales de media-amazon.com junto con ASINs
-        blocks = re.findall(
-            r'data-asin="([A-Z0-9]{10})"[^>]*>.*?'
-            r'src="(https://m\.media-amazon\.com/images/I/[^"]+)".*?'
-            r'(?:alt|title)="([^"]{10,})"',
-            html, re.DOTALL
-        )
-        for asin, image, title in blocks:
-            if asin in seen_asins or len(products) >= PRODUCT_LIMIT:
-                break
-            products.append({
-                "asin": asin,
-                "product_title": title.strip(),
-                "product_photo": image
-            })
-            seen_asins.add(asin)
-            print(f"✅ {title[:60]}", flush=True)
-
-    # Tercer patrón: buscar directamente imágenes media-amazon con ASIN cercano
-    if not products:
-        img_pattern = re.findall(
-            r'(https://m\.media-amazon\.com/images/I/[A-Za-z0-9%+_.-]+\.jpg)',
-            html
-        )
-        asin_pattern = re.findall(r'/dp/([A-Z0-9]{10})/', html)
-        title_pattern = re.findall(r'class="[^"]*title[^"]*"[^>]*>\s*<span[^>]*>([^<]{10,})</span>', html)
-
-        for i, asin in enumerate(asin_pattern):
-            if asin in seen_asins or len(products) >= PRODUCT_LIMIT:
-                break
-            if i >= len(img_pattern):
-                break
-
-            image = img_pattern[i]
-            title = title_pattern[i].strip() if i < len(title_pattern) else f"Amazon Best Seller {asin}"
-
-            products.append({
-                "asin": asin,
-                "product_title": title,
-                "product_photo": image
-            })
-            seen_asins.add(asin)
-            print(f"✅ {title[:60]}", flush=True)
+        print(f"✅ ASIN:{asin} | {title[:50]}", flush=True)
 
     return products
 
@@ -156,18 +162,16 @@ def find_products():
                 continue
 
             products = extract_products_from_html(html)
-            print(f"📦 Productos extraídos: {len(products)}", flush=True)
+            print(f"📦 Productos extraídos del bloque: {len(products)}", flush=True)
 
             for p in products:
                 if p["asin"] not in seen_asins and len(clean_products) < PRODUCT_LIMIT:
-                    # Validar que la imagen es real de Amazon
-                    if "media-amazon.com" in p["product_photo"]:
-                        clean_products.append(p)
-                        seen_asins.add(p["asin"])
+                    clean_products.append(p)
+                    seen_asins.add(p["asin"])
 
         if clean_products:
             print(f"✅ Total productos reales de Amazon: {len(clean_products)}", flush=True)
             return clean_products
         else:
-            print("⚠️ Sin productos con imagen válida, reintentando en 5 minutos...", flush=True)
+            print("⚠️ Sin productos válidos, reintentando en 5 minutos...", flush=True)
             time.sleep(300)
