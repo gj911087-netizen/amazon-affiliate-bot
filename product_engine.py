@@ -1,34 +1,24 @@
 import requests
 import random
 import re
+import json
 import time
 from config import PRODUCT_LIMIT
 
-# URLs nuevas de Amazon Best Sellers (formato /zgbs/)
 BESTSELLER_URLS = [
-    # Electrónica y gadgets
     "https://www.amazon.com/Best-Sellers-Electronics/zgbs/electronics/",
     "https://www.amazon.com/Best-Sellers-Computers-Accessories/zgbs/pc/",
     "https://www.amazon.com/Best-Sellers-Cell-Phones-Accessories/zgbs/wireless/",
-    # Videojuegos
     "https://www.amazon.com/Best-Sellers-Video-Games/zgbs/videogames/",
-    # Cocina y hogar
     "https://www.amazon.com/Best-Sellers-Home-Kitchen/zgbs/garden/",
     "https://www.amazon.com/Best-Sellers-Tools-Home-Improvement/zgbs/hi/",
-    "https://www.amazon.com/Best-Sellers-Appliances/zgbs/appliances/",
-    # Belleza y salud
     "https://www.amazon.com/Best-Sellers-Beauty-Personal-Care/zgbs/beauty/",
     "https://www.amazon.com/Best-Sellers-Health-Household/zgbs/hpc/",
-    # Deportes
     "https://www.amazon.com/Best-Sellers-Sports-Outdoors/zgbs/sporting-goods/",
-    # Bebés y niños
     "https://www.amazon.com/Best-Sellers-Baby-Products/zgbs/baby-products/",
     "https://www.amazon.com/Best-Sellers-Toys-Games/zgbs/toys-and-games/",
-    # Mascotas
     "https://www.amazon.com/Best-Sellers-Pet-Supplies/zgbs/pet-supplies/",
-    # Oficina
     "https://www.amazon.com/Best-Sellers-Office-Products/zgbs/office-products/",
-    # Automotriz
     "https://www.amazon.com/Best-Sellers-Automotive/zgbs/automotive/",
 ]
 
@@ -50,51 +40,76 @@ def get_headers():
         "Upgrade-Insecure-Requests": "1",
     }
 
-def extract_products_from_page(html):
-    """Extrae productos del HTML de la página de Best Sellers"""
+def extract_products_from_html(html):
+    """Extrae productos con imagen real del HTML de Amazon Best Sellers"""
     products = []
     seen_asins = set()
 
-    # Buscar ASINs en el HTML
-    asin_pattern = re.findall(r'"asin"\s*:\s*"([A-Z0-9]{10})"', html)
-    if not asin_pattern:
-        # Patrón alternativo
-        asin_pattern = re.findall(r'/dp/([A-Z0-9]{10})/', html)
+    # Buscar bloques de productos en el JSON embebido en el HTML
+    # Amazon guarda los datos en un objeto JS dentro del HTML
+    json_matches = re.findall(r'"asin"\s*:\s*"([A-Z0-9]{10})"[^}]*?"title"\s*:\s*"([^"]{10,})"[^}]*?"image"\s*:\s*"(https://[^"]+)"', html)
 
-    # Buscar títulos
-    title_pattern = re.findall(r'"product-title"[^>]*>([^<]+)<', html)
-    if not title_pattern:
-        title_pattern = re.findall(r'class="p13n-sc-truncated[^"]*"[^>]*>([^<]+)<', html)
-    if not title_pattern:
-        title_pattern = re.findall(r'"title"\s*:\s*"([^"]{10,})"', html)
-
-    for i, asin in enumerate(asin_pattern):
-        if asin in seen_asins:
-            continue
-        if len(products) >= PRODUCT_LIMIT:
+    for asin, title, image in json_matches:
+        if asin in seen_asins or len(products) >= PRODUCT_LIMIT:
             break
-
-        # Imagen usando ASIN
-        image = f"https://images-na.ssl-images-amazon.com/images/P/{asin}.jpg"
-
-        # Título
-        if i < len(title_pattern):
-            title = title_pattern[i].strip()
-        else:
-            title = f"Amazon Best Seller - {asin}"
-
-        if len(title) < 5:
+        if not image.startswith("https://m.media-amazon.com") and not image.startswith("https://images-na"):
             continue
-
         products.append({
             "asin": asin,
-            "product_title": title,
+            "product_title": title.strip(),
             "product_photo": image
         })
         seen_asins.add(asin)
         print(f"✅ {title[:60]}", flush=True)
 
+    # Si el patrón anterior no funciona, usar patrón alternativo
+    if not products:
+        # Buscar imágenes reales de media-amazon.com junto con ASINs
+        blocks = re.findall(
+            r'data-asin="([A-Z0-9]{10})"[^>]*>.*?'
+            r'src="(https://m\.media-amazon\.com/images/I/[^"]+)".*?'
+            r'(?:alt|title)="([^"]{10,})"',
+            html, re.DOTALL
+        )
+        for asin, image, title in blocks:
+            if asin in seen_asins or len(products) >= PRODUCT_LIMIT:
+                break
+            products.append({
+                "asin": asin,
+                "product_title": title.strip(),
+                "product_photo": image
+            })
+            seen_asins.add(asin)
+            print(f"✅ {title[:60]}", flush=True)
+
+    # Tercer patrón: buscar directamente imágenes media-amazon con ASIN cercano
+    if not products:
+        img_pattern = re.findall(
+            r'(https://m\.media-amazon\.com/images/I/[A-Za-z0-9%+_.-]+\.jpg)',
+            html
+        )
+        asin_pattern = re.findall(r'/dp/([A-Z0-9]{10})/', html)
+        title_pattern = re.findall(r'class="[^"]*title[^"]*"[^>]*>\s*<span[^>]*>([^<]{10,})</span>', html)
+
+        for i, asin in enumerate(asin_pattern):
+            if asin in seen_asins or len(products) >= PRODUCT_LIMIT:
+                break
+            if i >= len(img_pattern):
+                break
+
+            image = img_pattern[i]
+            title = title_pattern[i].strip() if i < len(title_pattern) else f"Amazon Best Seller {asin}"
+
+            products.append({
+                "asin": asin,
+                "product_title": title,
+                "product_photo": image
+            })
+            seen_asins.add(asin)
+            print(f"✅ {title[:60]}", flush=True)
+
     return products
+
 
 def scrape_bestsellers(url, retries=3):
     for attempt in range(retries):
@@ -111,7 +126,7 @@ def scrape_bestsellers(url, retries=3):
             elif response.status_code == 404:
                 print(f"⚠️ Página no existe (404), saltando...", flush=True)
                 return None
-            elif response.status_code == 503 or response.status_code == 429:
+            elif response.status_code in [503, 429]:
                 wait = (attempt + 1) * 30
                 print(f"🚫 Bloqueado, esperando {wait}s...", flush=True)
                 time.sleep(wait)
@@ -124,6 +139,7 @@ def scrape_bestsellers(url, retries=3):
             time.sleep(10)
 
     return None
+
 
 def find_products():
     while True:
@@ -139,17 +155,19 @@ def find_products():
             if html is None:
                 continue
 
-            products = extract_products_from_page(html)
+            products = extract_products_from_html(html)
             print(f"📦 Productos extraídos: {len(products)}", flush=True)
 
             for p in products:
                 if p["asin"] not in seen_asins and len(clean_products) < PRODUCT_LIMIT:
-                    clean_products.append(p)
-                    seen_asins.add(p["asin"])
+                    # Validar que la imagen es real de Amazon
+                    if "media-amazon.com" in p["product_photo"]:
+                        clean_products.append(p)
+                        seen_asins.add(p["asin"])
 
         if clean_products:
             print(f"✅ Total productos reales de Amazon: {len(clean_products)}", flush=True)
             return clean_products
         else:
-            print("⚠️ Sin productos, reintentando en 5 minutos...", flush=True)
+            print("⚠️ Sin productos con imagen válida, reintentando en 5 minutos...", flush=True)
             time.sleep(300)
