@@ -82,4 +82,8 @@ def _fallback_products():
             "product_photo": "https://m.media-amazon.com/images/I/61l9ppRbHlL._AC_SL1000_.jpg"
         },
         {
-            "asin": "B07
+            "asin": "B07XJ8C8F5",
+            "product_title": "Kindle Paperwhite",
+            "product_photo": "https://m.media-amazon.com/images/I/61Ww4abDCrL._AC_SL1000_.jpg"
+        }
+    ]
