@@ -31,7 +31,7 @@ except Exception as e:
 
 # ── Redis para historial permanente ─────────────────────
 REDIS_URL = os.getenv("REDIS_URL")
-r = redis.from_url(REDIS_URL) if REDIS_URL else None
+r = redis.from_url(REDIS_URL) if REDIS_URL and REDIS_URL.startswith(("redis://", "rediss://", "unix://")) else None
 
 def already_posted(asin):
     if r:
