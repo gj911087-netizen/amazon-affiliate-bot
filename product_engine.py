@@ -1,36 +1,35 @@
 import requests
 import random
-import xml.etree.ElementTree as ET
 import re
 import time
 from config import PRODUCT_LIMIT
 
-# Feeds RSS de Amazon por categoría
-RSS_FEEDS = [
+# URLs nuevas de Amazon Best Sellers (formato /zgbs/)
+BESTSELLER_URLS = [
     # Electrónica y gadgets
-    "https://www.amazon.com/gp/rss/bestsellers/electronics/",
-    "https://www.amazon.com/gp/rss/bestsellers/computers/",
-    "https://www.amazon.com/gp/rss/bestsellers/wireless/",
-    "https://www.amazon.com/gp/rss/bestsellers/photo/",
+    "https://www.amazon.com/Best-Sellers-Electronics/zgbs/electronics/",
+    "https://www.amazon.com/Best-Sellers-Computers-Accessories/zgbs/pc/",
+    "https://www.amazon.com/Best-Sellers-Cell-Phones-Accessories/zgbs/wireless/",
     # Videojuegos
-    "https://www.amazon.com/gp/rss/bestsellers/videogames/",
-    "https://www.amazon.com/gp/rss/bestsellers/pc/",
+    "https://www.amazon.com/Best-Sellers-Video-Games/zgbs/videogames/",
     # Cocina y hogar
-    "https://www.amazon.com/gp/rss/bestsellers/kitchen/",
-    "https://www.amazon.com/gp/rss/bestsellers/garden/",
-    "https://www.amazon.com/gp/rss/bestsellers/tools/",
-    "https://www.amazon.com/gp/rss/bestsellers/appliances/",
+    "https://www.amazon.com/Best-Sellers-Home-Kitchen/zgbs/garden/",
+    "https://www.amazon.com/Best-Sellers-Tools-Home-Improvement/zgbs/hi/",
+    "https://www.amazon.com/Best-Sellers-Appliances/zgbs/appliances/",
     # Belleza y salud
-    "https://www.amazon.com/gp/rss/bestsellers/beauty/",
-    "https://www.amazon.com/gp/rss/bestsellers/health-personal-care/",
-    "https://www.amazon.com/gp/rss/bestsellers/luxury-beauty/",
+    "https://www.amazon.com/Best-Sellers-Beauty-Personal-Care/zgbs/beauty/",
+    "https://www.amazon.com/Best-Sellers-Health-Household/zgbs/hpc/",
     # Deportes
-    "https://www.amazon.com/gp/rss/bestsellers/sports/",
-    "https://www.amazon.com/gp/rss/bestsellers/outdoor/",
+    "https://www.amazon.com/Best-Sellers-Sports-Outdoors/zgbs/sporting-goods/",
     # Bebés y niños
-    "https://www.amazon.com/gp/rss/bestsellers/baby-products/",
-    "https://www.amazon.com/gp/rss/bestsellers/toys-and-games/",
-    "https://www.amazon.com/gp/rss/bestsellers/kids/",
+    "https://www.amazon.com/Best-Sellers-Baby-Products/zgbs/baby-products/",
+    "https://www.amazon.com/Best-Sellers-Toys-Games/zgbs/toys-and-games/",
+    # Mascotas
+    "https://www.amazon.com/Best-Sellers-Pet-Supplies/zgbs/pet-supplies/",
+    # Oficina
+    "https://www.amazon.com/Best-Sellers-Office-Products/zgbs/office-products/",
+    # Automotriz
+    "https://www.amazon.com/Best-Sellers-Automotive/zgbs/automotive/",
 ]
 
 USER_AGENTS = [
@@ -44,51 +43,80 @@ USER_AGENTS = [
 def get_headers():
     return {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
     }
 
-def extract_asin(url):
-    match = re.search(r'/dp/([A-Z0-9]{10})', url)
-    if match:
-        return match.group(1)
-    match = re.search(r'/gp/product/([A-Z0-9]{10})', url)
-    if match:
-        return match.group(1)
-    return None
+def extract_products_from_page(html):
+    """Extrae productos del HTML de la página de Best Sellers"""
+    products = []
+    seen_asins = set()
 
-def extract_image(description_html):
-    match = re.search(r'src="(https://[^"]*amazon[^"]*\.jpg[^"]*)"', description_html)
-    if match:
-        return match.group(1)
-    match = re.search(r'src="(https://m\.media-amazon\.com/images/[^"]+)"', description_html)
-    if match:
-        return match.group(1)
-    return None
+    # Buscar ASINs en el HTML
+    asin_pattern = re.findall(r'"asin"\s*:\s*"([A-Z0-9]{10})"', html)
+    if not asin_pattern:
+        # Patrón alternativo
+        asin_pattern = re.findall(r'/dp/([A-Z0-9]{10})/', html)
 
-def fetch_feed(feed_url, retries=3):
+    # Buscar títulos
+    title_pattern = re.findall(r'"product-title"[^>]*>([^<]+)<', html)
+    if not title_pattern:
+        title_pattern = re.findall(r'class="p13n-sc-truncated[^"]*"[^>]*>([^<]+)<', html)
+    if not title_pattern:
+        title_pattern = re.findall(r'"title"\s*:\s*"([^"]{10,})"', html)
+
+    for i, asin in enumerate(asin_pattern):
+        if asin in seen_asins:
+            continue
+        if len(products) >= PRODUCT_LIMIT:
+            break
+
+        # Imagen usando ASIN
+        image = f"https://images-na.ssl-images-amazon.com/images/P/{asin}.jpg"
+
+        # Título
+        if i < len(title_pattern):
+            title = title_pattern[i].strip()
+        else:
+            title = f"Amazon Best Seller - {asin}"
+
+        if len(title) < 5:
+            continue
+
+        products.append({
+            "asin": asin,
+            "product_title": title,
+            "product_photo": image
+        })
+        seen_asins.add(asin)
+        print(f"✅ {title[:60]}", flush=True)
+
+    return products
+
+def scrape_bestsellers(url, retries=3):
     for attempt in range(retries):
         try:
-            delay = random.uniform(2, 5)
+            delay = random.uniform(3, 7)
             print(f"⏳ Esperando {delay:.1f}s...", flush=True)
             time.sleep(delay)
 
-            print(f"📡 RSS: {feed_url} (intento {attempt+1})", flush=True)
-            response = requests.get(feed_url, headers=get_headers(), timeout=15)
+            print(f"📡 Scraping: {url} (intento {attempt+1})", flush=True)
+            response = requests.get(url, headers=get_headers(), timeout=20)
 
             if response.status_code == 200:
-                return response.content
+                return response.text
             elif response.status_code == 404:
-                print(f"⚠️ Feed no existe (404), saltando...", flush=True)
+                print(f"⚠️ Página no existe (404), saltando...", flush=True)
                 return None
-            elif response.status_code == 429:
+            elif response.status_code == 503 or response.status_code == 429:
                 wait = (attempt + 1) * 30
                 print(f"🚫 Bloqueado, esperando {wait}s...", flush=True)
                 time.sleep(wait)
             else:
-                print(f"⚠️ Status {response.status_code}, reintentando...", flush=True)
+                print(f"⚠️ Status {response.status_code}", flush=True)
                 time.sleep(10)
 
         except Exception as e:
@@ -99,72 +127,29 @@ def fetch_feed(feed_url, retries=3):
 
 def find_products():
     while True:
-        feeds = random.sample(RSS_FEEDS, min(4, len(RSS_FEEDS)))
+        urls = random.sample(BESTSELLER_URLS, min(3, len(BESTSELLER_URLS)))
         clean_products = []
         seen_asins = set()
 
-        for feed_url in feeds:
+        for url in urls:
             if len(clean_products) >= PRODUCT_LIMIT:
                 break
 
-            content = fetch_feed(feed_url)
-            if content is None:
+            html = scrape_bestsellers(url)
+            if html is None:
                 continue
 
-            try:
-                root = ET.fromstring(content)
-                channel = root.find('channel')
-                if channel is None:
-                    continue
+            products = extract_products_from_page(html)
+            print(f"📦 Productos extraídos: {len(products)}", flush=True)
 
-                items = channel.findall('item')
-                print(f"📦 Items en feed: {len(items)}", flush=True)
-                random.shuffle(items)
-
-                for item in items:
-                    if len(clean_products) >= PRODUCT_LIMIT:
-                        break
-
-                    title_el = item.find('title')
-                    if title_el is None or not title_el.text:
-                        continue
-                    title = title_el.text.strip()
-                    if len(title) < 10:
-                        continue
-
-                    link_el = item.find('link')
-                    if link_el is None or not link_el.text:
-                        continue
-                    asin = extract_asin(link_el.text.strip())
-                    if not asin or asin in seen_asins:
-                        continue
-
-                    desc_el = item.find('description')
-                    image = None
-                    if desc_el is not None and desc_el.text:
-                        image = extract_image(desc_el.text)
-
-                    if not image:
-                        image = f"https://images-na.ssl-images-amazon.com/images/P/{asin}.jpg"
-
-                    if not image.startswith("https://"):
-                        continue
-
-                    clean_products.append({
-                        "asin": asin,
-                        "product_title": title,
-                        "product_photo": image
-                    })
-                    seen_asins.add(asin)
-                    print(f"✅ {title[:60]}", flush=True)
-
-            except Exception as e:
-                print(f"❌ Error parseando feed: {e}", flush=True)
-                continue
+            for p in products:
+                if p["asin"] not in seen_asins and len(clean_products) < PRODUCT_LIMIT:
+                    clean_products.append(p)
+                    seen_asins.add(p["asin"])
 
         if clean_products:
             print(f"✅ Total productos reales de Amazon: {len(clean_products)}", flush=True)
             return clean_products
         else:
-            print("⚠️ Sin productos, reintentando en 3 minutos...", flush=True)
-            time.sleep(180)
+            print("⚠️ Sin productos, reintentando en 5 minutos...", flush=True)
+            time.sleep(300)
