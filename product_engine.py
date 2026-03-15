@@ -5,44 +5,49 @@ import re
 import time
 from config import PRODUCT_LIMIT
 
-# Feeds RSS oficiales de Amazon Best Sellers por categoría
+# Feeds RSS de Amazon por categoría
 RSS_FEEDS = [
+    # Electrónica y gadgets
     "https://www.amazon.com/gp/rss/bestsellers/electronics/",
     "https://www.amazon.com/gp/rss/bestsellers/computers/",
     "https://www.amazon.com/gp/rss/bestsellers/wireless/",
     "https://www.amazon.com/gp/rss/bestsellers/photo/",
+    # Videojuegos
     "https://www.amazon.com/gp/rss/bestsellers/videogames/",
-    "https://www.amazon.com/gp/rss/bestsellers/toys-and-games/",
-    "https://www.amazon.com/gp/rss/bestsellers/sporting-goods/",
-    "https://www.amazon.com/gp/rss/bestsellers/office-products/",
+    "https://www.amazon.com/gp/rss/bestsellers/pc/",
+    # Cocina y hogar
     "https://www.amazon.com/gp/rss/bestsellers/kitchen/",
+    "https://www.amazon.com/gp/rss/bestsellers/garden/",
     "https://www.amazon.com/gp/rss/bestsellers/tools/",
-    "https://www.amazon.com/gp/rss/bestsellers/pet-supplies/",
+    "https://www.amazon.com/gp/rss/bestsellers/appliances/",
+    # Belleza y salud
     "https://www.amazon.com/gp/rss/bestsellers/beauty/",
     "https://www.amazon.com/gp/rss/bestsellers/health-personal-care/",
-    "https://www.amazon.com/gp/rss/bestsellers/apparel/",
-    "https://www.amazon.com/gp/rss/bestsellers/automotive/",
+    "https://www.amazon.com/gp/rss/bestsellers/luxury-beauty/",
+    # Deportes
+    "https://www.amazon.com/gp/rss/bestsellers/sports/",
+    "https://www.amazon.com/gp/rss/bestsellers/outdoor/",
+    # Bebés y niños
+    "https://www.amazon.com/gp/rss/bestsellers/baby-products/",
+    "https://www.amazon.com/gp/rss/bestsellers/toys-and-games/",
+    "https://www.amazon.com/gp/rss/bestsellers/kids/",
 ]
 
-# Rotación de User-Agents para parecer humano
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.0.0",
 ]
 
 def get_headers():
-    """Genera headers aleatorios para parecer un navegador real"""
     return {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
-        "Cache-Control": "max-age=0",
     }
 
 def extract_asin(url):
@@ -64,44 +69,37 @@ def extract_image(description_html):
     return None
 
 def fetch_feed(feed_url, retries=3):
-    """Obtiene un feed RSS con reintentos y delays aleatorios"""
     for attempt in range(retries):
         try:
-            # Delay aleatorio entre requests para parecer humano
-            delay = random.uniform(2, 6)
-            print(f"⏳ Esperando {delay:.1f}s antes de consultar...", flush=True)
+            delay = random.uniform(2, 5)
+            print(f"⏳ Esperando {delay:.1f}s...", flush=True)
             time.sleep(delay)
 
-            print(f"📡 Consultando RSS: {feed_url} (intento {attempt+1})", flush=True)
-            response = requests.get(
-                feed_url,
-                headers=get_headers(),
-                timeout=15
-            )
+            print(f"📡 RSS: {feed_url} (intento {attempt+1})", flush=True)
+            response = requests.get(feed_url, headers=get_headers(), timeout=15)
 
             if response.status_code == 200:
                 return response.content
+            elif response.status_code == 404:
+                print(f"⚠️ Feed no existe (404), saltando...", flush=True)
+                return None
             elif response.status_code == 429:
-                wait = (attempt + 1) * 30  # 30s, 60s, 90s
-                print(f"🚫 Amazon bloqueó temporalmente, esperando {wait}s...", flush=True)
+                wait = (attempt + 1) * 30
+                print(f"🚫 Bloqueado, esperando {wait}s...", flush=True)
                 time.sleep(wait)
-            elif response.status_code == 503:
-                print(f"⚠️ Amazon no disponible (503), reintentando...", flush=True)
-                time.sleep(15)
             else:
-                print(f"⚠️ Status inesperado: {response.status_code}", flush=True)
-                break
+                print(f"⚠️ Status {response.status_code}, reintentando...", flush=True)
+                time.sleep(10)
 
         except Exception as e:
-            print(f"❌ Error en request: {e}", flush=True)
+            print(f"❌ Error: {e}", flush=True)
             time.sleep(10)
 
     return None
 
 def find_products():
     while True:
-        # Tomar 3 feeds aleatorios cada vez
-        feeds = random.sample(RSS_FEEDS, min(3, len(RSS_FEEDS)))
+        feeds = random.sample(RSS_FEEDS, min(4, len(RSS_FEEDS)))
         clean_products = []
         seen_asins = set()
 
@@ -137,8 +135,7 @@ def find_products():
                     link_el = item.find('link')
                     if link_el is None or not link_el.text:
                         continue
-                    link = link_el.text.strip()
-                    asin = extract_asin(link)
+                    asin = extract_asin(link_el.text.strip())
                     if not asin or asin in seen_asins:
                         continue
 
