@@ -188,13 +188,19 @@ def _make_audio(dur):
         + ",bass=g=11"
         + ",treble=g=6"
         + ",highpass=f=38"
+        # CRITICO: convertir a estereo 44100Hz
+        # Facebook e Instagram silencian audio mono o de baja calidad
+        + ",aformat=channel_layouts=stereo"
         + ",afade=t=in:st=0:d=1.8"
         + ",afade=t=out:st=" + str(dur - 2) + ":d=2.0"
         + ",volume=0.92"
     )
 
     cmd = ["ffmpeg", "-y"] + inp + ["-filter_complex", fc,
-                                     "-c:a", "aac", "-b:a", "192k", out]
+                                     "-c:a", "aac", "-b:a", "192k",
+                                     "-ar", "44100",
+                                     "-ac", "2",
+                                     out]
     r = subprocess.run(cmd, capture_output=True, timeout=25)
 
     if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 5000:
@@ -219,7 +225,8 @@ def _make_audio(dur):
         ",afade=t=in:st=0:d=1.5"
         ",afade=t=out:st=" + str(dur - 2) + ":d=1.8"
         ",volume=0.9",
-        "-c:a", "aac", "-b:a", "128k", out2
+        "-c:a", "aac", "-b:a", "192k",
+        "-ar", "44100", "-ac", "2", out2
     ]
     r2 = subprocess.run(cmd2, capture_output=True, timeout=20)
     if r2.returncode == 0 and os.path.exists(out2) and os.path.getsize(out2) > 1000:
@@ -252,7 +259,8 @@ def create_marketing_video(product_name, image_url):
     if audio_path and os.path.exists(audio_path):
         cmd += ["-i", audio_path,
                 "-map", "0:v", "-map", "1:a",
-                "-c:a", "aac", "-b:a", "192k"]
+                "-c:a", "aac", "-b:a", "192k",
+                "-ar", "44100", "-ac", "2"]
     else:
         cmd += ["-map", "0:v"]
 
