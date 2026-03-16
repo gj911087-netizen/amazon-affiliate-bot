@@ -51,17 +51,77 @@ def _download(url):
         return None
 
 
-def _build_resources(prod_img):
-    # Fondo borroso oscuro
-    bg = prod_img.convert("RGB").resize((WIDTH, HEIGHT), Image.LANCZOS)
-    bg = bg.filter(ImageFilter.GaussianBlur(45))
-    bg = ImageEnhance.Brightness(bg).enhance(0.12).convert("RGBA")
-    grad = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-    gd   = ImageDraw.Draw(grad)
-    for y in range(HEIGHT):
-        a = int(105 + 45 * (y / HEIGHT))
-        gd.line([(0, y), (WIDTH, y)], fill=(4, 4, 14, a))
-    bg = Image.alpha_composite(bg, grad)
+def _make_bg(prod_img, style):
+    """6 estilos de fondo que rotan en cada video."""
+    if style == 1:
+        bg = prod_img.convert("RGB").resize((WIDTH, HEIGHT), Image.LANCZOS)
+        bg = bg.filter(ImageFilter.GaussianBlur(45))
+        bg = ImageEnhance.Brightness(bg).enhance(0.12).convert("RGBA")
+        grad = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,0))
+        gd = ImageDraw.Draw(grad)
+        for y in range(HEIGHT):
+            a = int(105 + 45*(y/HEIGHT))
+            gd.line([(0,y),(WIDTH,y)], fill=(4,4,14,a))
+        return Image.alpha_composite(bg, grad)
+    elif style == 2:
+        bg = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,255))
+        draw = ImageDraw.Draw(bg)
+        for y in range(HEIGHT):
+            r=int(15+20*(y/HEIGHT)); g=int(5+10*(y/HEIGHT)); b=int(45+30*(y/HEIGHT))
+            draw.line([(0,y),(WIDTH,y)],fill=(r,g,b,255))
+        glow = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,0))
+        gd = ImageDraw.Draw(glow)
+        for r in range(600,0,-15):
+            alpha=int(18*(1-r/600))
+            gd.ellipse([WIDTH//2-r,HEIGHT//2-r,WIDTH//2+r,HEIGHT//2+r],fill=(80,50,180,alpha))
+        return Image.alpha_composite(bg, glow)
+    elif style == 3:
+        bg = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,255))
+        draw = ImageDraw.Draw(bg)
+        for y in range(HEIGHT):
+            r=int(25+15*(y/HEIGHT)); g=int(12+8*(y/HEIGHT)); b=int(5+3*(y/HEIGHT))
+            draw.line([(0,y),(WIDTH,y)],fill=(r,g,b,255))
+        glow = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,0))
+        gd = ImageDraw.Draw(glow)
+        for r in range(700,0,-15):
+            alpha=int(15*(1-r/700))
+            gd.ellipse([WIDTH//2-r,HEIGHT//3-r,WIDTH//2+r,HEIGHT//3+r],fill=(200,80,10,alpha))
+        return Image.alpha_composite(bg, glow)
+    elif style == 4:
+        bg = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,255))
+        draw = ImageDraw.Draw(bg)
+        for y in range(HEIGHT):
+            r=int(5+5*(y/HEIGHT)); g=int(20+20*(y/HEIGHT)); b=int(35+25*(y/HEIGHT))
+            draw.line([(0,y),(WIDTH,y)],fill=(r,g,b,255))
+        glow = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,0))
+        gd = ImageDraw.Draw(glow)
+        for r in range(650,0,-15):
+            alpha=int(20*(1-r/650))
+            gd.ellipse([WIDTH//2-r,HEIGHT//2-r,WIDTH//2+r,HEIGHT//2+r],fill=(0,180,160,alpha))
+        return Image.alpha_composite(bg, glow)
+    elif style == 5:
+        bg = prod_img.convert("RGB").resize((WIDTH,HEIGHT),Image.LANCZOS)
+        bg = bg.filter(ImageFilter.GaussianBlur(35))
+        bg = ImageEnhance.Brightness(bg).enhance(0.20)
+        bg = ImageEnhance.Color(bg).enhance(2.5).convert("RGBA")
+        overlay = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,140))
+        return Image.alpha_composite(bg, overlay)
+    else:
+        bg = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,255))
+        draw = ImageDraw.Draw(bg)
+        for y in range(HEIGHT):
+            r=int(35+20*(y/HEIGHT)); g=int(5+3*(y/HEIGHT)); b=int(5+3*(y/HEIGHT))
+            draw.line([(0,y),(WIDTH,y)],fill=(r,g,b,255))
+        glow = Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,0))
+        gd = ImageDraw.Draw(glow)
+        for r in range(600,0,-15):
+            alpha=int(18*(1-r/600))
+            gd.ellipse([WIDTH//2-r,HEIGHT//2-r,WIDTH//2+r,HEIGHT//2+r],fill=(180,20,20,alpha))
+        return Image.alpha_composite(bg, glow)
+
+
+def _build_resources(prod_img, style):
+    bg = _make_bg(prod_img, style)
 
     # Sombra pre-calculada (una vez)
     _sw = PROD_MAX + CARD_PAD * 2
@@ -244,7 +304,10 @@ def create_marketing_video(product_name, image_url):
     if prod_img is None:
         prod_img = Image.new("RGBA", (600, 600), (35, 35, 35, 255))
 
-    bg, shadow_base, wm_img, wm_size, spotlight_cache = _build_resources(prod_img)
+    import random as _rand
+    style = _rand.randint(1, 6)
+    print("Estilo de fondo: " + str(style), flush=True)
+    bg, shadow_base, wm_img, wm_size, spotlight_cache = _build_resources(prod_img, style)
     audio_path = _make_audio(DUR)
     out_path   = tempfile.mktemp(suffix=".mp4")
 
