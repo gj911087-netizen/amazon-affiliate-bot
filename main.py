@@ -46,11 +46,12 @@ try:
 
     link = generate_affiliate_link(asin)
     text = generate_marketing_text(name, link)
-    image = generate_image(name, image_url)
-    post_to_social(text, image)
+    media = generate_image(name, image_url)  # Devuelve (tipo, ruta)
+    post_to_social(text, media)
     log_post(name, link)
 
-    print(f"✅ Publicado: {name}", flush=True)
+    media_type = media[0] if media else "unknown"
+    print(f"✅ Publicado ({media_type}): {name}", flush=True)
 
 except Exception as e:
     print(f"❌ Error: {e}", flush=True)
