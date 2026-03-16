@@ -1,10 +1,10 @@
 """
 image_generator.py
-Reel profesional 9:16 - marketing limpio estilo showcase
-Animaciones: entrada suave -> float+breathe+spotlight -> fade out
-Video: SOLO producto en card + marca de agua transparente sin fondo
-Musica: commercial upbeat moderna (sin derechos)
-Render seguro: ~62s en Render plan gratuito
+Reel profesional 9:16 - showcase limpio
+- Solo producto en card blanca + marca de agua sin fondo
+- Animaciones: float + breathe + spotlight
+- Musica: acordes con armonicos + doble eco (suena a instrumento real, no pitido)
+- Seguro en Render gratis: ~65s render
 """
 
 import os, math, time, subprocess, tempfile
@@ -52,7 +52,7 @@ def _download(url):
 
 
 def _build_resources(prod_img):
-    # Fondo: producto muy borroso y oscuro
+    # Fondo borroso oscuro
     bg = prod_img.convert("RGB").resize((WIDTH, HEIGHT), Image.LANCZOS)
     bg = bg.filter(ImageFilter.GaussianBlur(45))
     bg = ImageEnhance.Brightness(bg).enhance(0.12).convert("RGBA")
@@ -63,7 +63,7 @@ def _build_resources(prod_img):
         gd.line([(0, y), (WIDTH, y)], fill=(4, 4, 14, a))
     bg = Image.alpha_composite(bg, grad)
 
-    # Sombra pre-calculada
+    # Sombra pre-calculada (una vez)
     _sw = PROD_MAX + CARD_PAD * 2
     sh  = Image.new("RGBA", (_sw + SB * 2, _sw + SB * 2), (0, 0, 0, 0))
     sd  = ImageDraw.Draw(sh)
@@ -73,12 +73,12 @@ def _build_resources(prod_img):
     )
     shadow_base = sh.filter(ImageFilter.GaussianBlur(SB))
 
-    # Marca de agua: solo letras, sin ningun fondo ni caja
-    fw     = _font(36)
-    WM_W   = 780
-    WM_H   = 52
-    wm     = Image.new("RGBA", (WM_W, WM_H), (0, 0, 0, 0))
-    wd     = ImageDraw.Draw(wm)
+    # Marca de agua: SOLO letras blancas semitransparentes, cero fondo
+    fw   = _font(36)
+    WM_W = 780
+    WM_H = 52
+    wm   = Image.new("RGBA", (WM_W, WM_H), (0, 0, 0, 0))
+    wd   = ImageDraw.Draw(wm)
     wd.text((WM_W // 2 + 1, WM_H // 2 + 1),
             "To-do en Uno  |  @impulso_dijital",
             font=fw, fill=(0, 0, 0, 25), anchor="mm")
@@ -86,7 +86,7 @@ def _build_resources(prod_img):
             "To-do en Uno  |  @impulso_dijital",
             font=fw, fill=(255, 255, 255, 68), anchor="mm")
 
-    # Cache de overlays spotlight (evita crear nuevas imagenes por frame)
+    # Cache de overlays spotlight (evita crear imagenes por frame)
     spotlight_cache = {}
     for alpha in range(0, 30, 5):
         spotlight_cache[alpha] = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, alpha))
@@ -103,13 +103,12 @@ def _ap(img, a):
 
 
 def _frame(prod_img, bg, shadow_base, wm_img, wm_size, spotlight_cache, frame_n):
-    t      = frame_n / TOTAL
-    WM_W, WM_H = wm_size
-    canvas = bg.copy()
+    t       = frame_n / TOTAL
+    WM_W, _ = wm_size
+    WM_H    = 52
+    canvas  = bg.copy()
 
-    # === ANIMACIONES ===
     if t < 0.15:
-        # ENTRADA: producto entra desde abajo con fade suave
         p        = _eoq(t / 0.15)
         g_alpha  = p
         scale    = 0.88 + 0.12 * p
@@ -117,36 +116,33 @@ def _frame(prod_img, bg, shadow_base, wm_img, wm_size, spotlight_cache, frame_n)
         spotlight = 0
 
     elif t < 0.88:
-        # SHOWCASE:
-        # BREATHE: escala sube y baja suavemente (2 ciclos)
-        # FLOAT:   producto flota arriba/abajo (2 ciclos sincronizados)
-        # SPOTLIGHT: fondo se oscurece levemente en cada peak
         p        = (t - 0.15) / 0.73
         g_alpha  = 1.0
+        # BREATHE: 2 ciclos suaves
         scale    = 1.0 + math.sin(p * math.pi * 2) * 0.018
+        # FLOAT: sincronizado con breathe
         float_y  = int(math.sin(p * math.pi * 2) * 16)
+        # SPOTLIGHT: oscurece fondo en peak
         spotlight = round(abs(math.sin(p * math.pi)) * 25 / 5) * 5
 
     else:
-        # SALIDA: fade out limpio
         p        = (t - 0.88) / 0.12
         g_alpha  = 1.0 - _eio(p)
         scale    = 1.0
         float_y  = 0
         spotlight = 0
 
-    # Spotlight: oscurece el fondo ligeramente para enfocar el producto
     if spotlight > 0 and spotlight in spotlight_cache:
         canvas = Image.alpha_composite(canvas, spotlight_cache[spotlight])
 
-    # Card del producto
     pw     = int(PROD_MAX * scale)
     cw     = pw + CARD_PAD * 2
     shadow = shadow_base.resize((cw + SB * 2, cw + SB * 2), Image.BILINEAR)
-    card   = Image.new("RGBA", (cw, cw), (0, 0, 0, 0))
-    cd     = ImageDraw.Draw(card)
+
+    card = Image.new("RGBA", (cw, cw), (0, 0, 0, 0))
+    cd   = ImageDraw.Draw(card)
     cd.rounded_rectangle([0, 0, cw, cw], radius=48, fill=(255, 255, 255, 252))
-    pc     = prod_img.copy()
+    pc   = prod_img.copy()
     pc.thumbnail((pw, pw), Image.LANCZOS)
     card.paste(pc, ((cw - pc.width) // 2, (cw - pc.height) // 2), pc)
 
@@ -158,7 +154,7 @@ def _frame(prod_img, bg, shadow_base, wm_img, wm_size, spotlight_cache, frame_n)
     canvas.paste(shadow, (cx - SB, cy - SB), shadow)
     canvas.paste(card,   (cx, cy),           card)
 
-    # Unico elemento de texto: marca de agua abajo, sin caja
+    # Solo marca de agua, nada mas
     if 0.12 < t < 0.88:
         canvas.alpha_composite(wm_img, ((WIDTH - WM_W) // 2, HEIGHT - 145))
 
@@ -167,13 +163,16 @@ def _frame(prod_img, bg, shadow_base, wm_img, wm_size, spotlight_cache, frame_n)
 
 def _make_audio(dur):
     """
-    Musica upbeat commercial moderna.
-    Progresion Am-F-C-G con bajo profundo, melodia brillante.
-    6 voces + bass/treble EQ — formula estable en Render.
+    Musica con armonicos reales + doble eco.
+    Armonicos = fundamental + 2x + 3x freq → suena a instrumento, no a pitido.
+    Doble echo = reverb natural que da profundidad y calidez.
+    6 voces, formula estable en Render.
     """
-    out    = tempfile.mktemp(suffix=".aac")
-    freqs  = [130.81, 196.00, 220.00, 261.63, 329.63, 440.00]
-    vols   = [0.26,   0.18,   0.20,   0.22,   0.18,   0.10  ]
+    out = tempfile.mktemp(suffix=".aac")
+
+    # C mayor: bajo profundo + armonicos del acorde + melodia
+    freqs = [65.41, 130.81, 164.81, 196.00, 261.63, 329.63]
+    vols  = [0.30,  0.20,   0.17,   0.15,   0.18,   0.15  ]
     labels = list("abcdef")
 
     inp = []
@@ -183,14 +182,19 @@ def _make_audio(dur):
 
     parts = [f"[{i}]volume={v}[{l}]" for i, (l, v) in enumerate(zip(labels, vols))]
     mix   = "".join(f"[{l}]" for l in labels) + "amix=inputs=6:duration=longest"
-    fc    = (
+
+    fc = (
         ";".join(parts) + ";" + mix
-        + ",bass=g=10"
-        + ",treble=g=7"
-        + ",highpass=f=50"
-        + ",afade=t=in:st=0:d=1.2"
-        + ",afade=t=out:st=" + str(dur - 2) + ":d=1.8"
-        + ",volume=1.15"
+        # Doble echo: el primero da cuerpo, el segundo da profundidad
+        # Resultado: suena como un instrumento en una sala, no un pitido
+        + ",aecho=0.65:0.45:60:0.40"
+        + ",aecho=0.55:0.35:180:0.28"
+        + ",bass=g=11"
+        + ",treble=g=6"
+        + ",highpass=f=38"
+        + ",afade=t=in:st=0:d=1.8"
+        + ",afade=t=out:st=" + str(dur - 2) + ":d=2.0"
+        + ",volume=0.92"
     )
 
     cmd = ["ffmpeg", "-y"] + inp + ["-filter_complex", fc,
@@ -222,7 +226,8 @@ def create_marketing_video(product_name, image_url):
         "-i", "pipe:0",
     ]
     if audio_path and os.path.exists(audio_path):
-        cmd += ["-i", audio_path, "-map", "0:v", "-map", "1:a",
+        cmd += ["-i", audio_path,
+                "-map", "0:v", "-map", "1:a",
                 "-c:a", "aac", "-b:a", "192k"]
     else:
         cmd += ["-map", "0:v"]
