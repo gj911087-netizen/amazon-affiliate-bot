@@ -164,15 +164,12 @@ def _frame(prod_img, bg, shadow_base, wm_img, wm_size, spotlight_cache, frame_n)
 def _make_audio(dur):
     """
     Musica con armonicos reales + doble eco.
-    Armonicos = fundamental + 2x + 3x freq → suena a instrumento, no a pitido.
-    Doble echo = reverb natural que da profundidad y calidez.
     6 voces, formula estable en Render.
     """
     out = tempfile.mktemp(suffix=".aac")
 
-    # C mayor: bajo profundo + armonicos del acorde + melodia
-    freqs = [65.41, 130.81, 164.81, 196.00, 261.63, 329.63]
-    vols  = [0.30,  0.20,   0.17,   0.15,   0.18,   0.15  ]
+    freqs  = [65.41, 130.81, 164.81, 196.00, 261.63, 329.63]
+    vols   = [0.30,  0.20,   0.17,   0.15,   0.18,   0.15  ]
     labels = list("abcdef")
 
     inp = []
@@ -180,13 +177,12 @@ def _make_audio(dur):
         inp += ["-f", "lavfi", "-i",
                 "sine=frequency=" + str(f) + ":duration=" + str(dur)]
 
-    parts = [f"[{i}]volume={v}[{l}]" for i, (l, v) in enumerate(zip(labels, vols))]
-    mix   = "".join(f"[{l}]" for l in labels) + "amix=inputs=6:duration=longest"
+    parts = ["[" + str(i) + "]volume=" + str(v) + "[" + l + "]"
+             for i, (l, v) in enumerate(zip(labels, vols))]
+    mix   = "".join("[" + l + "]" for l in labels) + "amix=inputs=6:duration=longest"
 
     fc = (
         ";".join(parts) + ";" + mix
-        # Doble echo: el primero da cuerpo, el segundo da profundidad
-        # Resultado: suena como un instrumento en una sala, no un pitido
         + ",aecho=0.65:0.45:60:0.40"
         + ",aecho=0.55:0.35:180:0.28"
         + ",bass=g=11"
@@ -199,10 +195,38 @@ def _make_audio(dur):
 
     cmd = ["ffmpeg", "-y"] + inp + ["-filter_complex", fc,
                                      "-c:a", "aac", "-b:a", "192k", out]
-    r = subprocess.run(cmd, capture_output=True, timeout=20)
-    if r.returncode == 0:
+    r = subprocess.run(cmd, capture_output=True, timeout=25)
+
+    if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 5000:
+        print("Audio generado: " + str(os.path.getsize(out) // 1024) + "KB", flush=True)
         return out
-    print("Audio error: " + r.stderr.decode()[-80:], flush=True)
+
+    print("Audio fallo rc=" + str(r.returncode), flush=True)
+    if r.returncode != 0:
+        print(r.stderr.decode()[-150:], flush=True)
+
+    # Fallback: audio mas simple (3 voces, sin EQ complejo)
+    out2 = tempfile.mktemp(suffix=".aac")
+    cmd2 = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "sine=frequency=261.63:duration=" + str(dur),
+        "-f", "lavfi", "-i", "sine=frequency=329.63:duration=" + str(dur),
+        "-f", "lavfi", "-i", "sine=frequency=196.00:duration=" + str(dur),
+        "-filter_complex",
+        "[0]volume=0.35[a];[1]volume=0.28[b];[2]volume=0.22[c];"
+        "[a][b][c]amix=inputs=3:duration=longest"
+        ",bass=g=10,treble=g=5"
+        ",afade=t=in:st=0:d=1.5"
+        ",afade=t=out:st=" + str(dur - 2) + ":d=1.8"
+        ",volume=0.9",
+        "-c:a", "aac", "-b:a", "128k", out2
+    ]
+    r2 = subprocess.run(cmd2, capture_output=True, timeout=20)
+    if r2.returncode == 0 and os.path.exists(out2) and os.path.getsize(out2) > 1000:
+        print("Audio fallback OK: " + str(os.path.getsize(out2) // 1024) + "KB", flush=True)
+        return out2
+
+    print("Audio fallback tambien fallo", flush=True)
     return None
 
 
