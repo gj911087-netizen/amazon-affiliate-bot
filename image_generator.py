@@ -1,12 +1,10 @@
 """
 image_generator.py
-Reel profesional 9:16 - estilo marketing limpio
-- Producto centrado en card blanca con sombra - protagonista total
-- Fondo borroso oscuro elegante (del mismo producto)
-- Animacion: fade-in suave + zoom gentil + fade-out
-- SOLO marca de agua semitransparente, ningun texto encima del producto
-- Musica estilo soul jazz original (sin derechos)
-- 12 segundos - seguro para Render plan gratuito (~67s render)
+Reel profesional 9:16 - marketing limpio estilo showcase
+Animaciones: entrada suave -> float+breathe+spotlight -> fade out
+Video: SOLO producto en card + marca de agua transparente sin fondo
+Musica: commercial upbeat moderna (sin derechos)
+Render seguro: ~62s en Render plan gratuito
 """
 
 import os, math, time, subprocess, tempfile
@@ -18,14 +16,13 @@ WIDTH    = 1080
 HEIGHT   = 1920
 FPS      = 25
 DUR      = 12
-TOTAL    = FPS * DUR   # 300 frames
+TOTAL    = FPS * DUR
 
-PROD_SIZE = 800   # producto grande pero con espacio alrededor
-CARD_PAD  = 40
-SB        = 24    # blur radio de sombra
+PROD_MAX = 820
+CARD_PAD = 40
+SB       = 24
 
 
-# ── Tipografia ────────────────────────────────────────────────────────────────
 def _font(size):
     for p in [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -41,176 +38,178 @@ def _font(size):
     return ImageFont.load_default()
 
 
-# ── Curvas de animacion ───────────────────────────────────────────────────────
-def _eoq(t):  return 1 - (1 - t) ** 4    # ease-out quartic (suave)
-def _eio(t):  return t * t * (3 - 2 * t) # ease-in-out cuadratico
+def _eoq(t):  return 1 - (1 - t) ** 4
+def _eio(t):  return t * t * (3 - 2 * t)
 
 
-# ── Descarga imagen ───────────────────────────────────────────────────────────
 def _download(url):
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         return Image.open(BytesIO(r.content)).convert("RGBA")
     except Exception as e:
-        print(f"Advertencia imagen: {e}", flush=True)
+        print("Advertencia imagen: " + str(e), flush=True)
         return None
 
 
-# ── Recursos pre-calculados (una sola vez antes del loop) ────────────────────
 def _build_resources(prod_img):
     # Fondo: producto muy borroso y oscuro
     bg = prod_img.convert("RGB").resize((WIDTH, HEIGHT), Image.LANCZOS)
     bg = bg.filter(ImageFilter.GaussianBlur(45))
-    bg = ImageEnhance.Brightness(bg).enhance(0.12)
-    bg = bg.convert("RGBA")
-
-    # Gradiente oscuro encima para profundidad
+    bg = ImageEnhance.Brightness(bg).enhance(0.12).convert("RGBA")
     grad = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     gd   = ImageDraw.Draw(grad)
     for y in range(HEIGHT):
-        a = int(110 + 40 * (y / HEIGHT))
-        gd.line([(0, y), (WIDTH, y)], fill=(5, 5, 15, a))
+        a = int(105 + 45 * (y / HEIGHT))
+        gd.line([(0, y), (WIDTH, y)], fill=(4, 4, 14, a))
     bg = Image.alpha_composite(bg, grad)
 
-    # Sombra de card (se calcula UNA vez, se resizea por frame)
-    _sw = PROD_SIZE + CARD_PAD * 2
+    # Sombra pre-calculada
+    _sw = PROD_MAX + CARD_PAD * 2
     sh  = Image.new("RGBA", (_sw + SB * 2, _sw + SB * 2), (0, 0, 0, 0))
     sd  = ImageDraw.Draw(sh)
     sd.rounded_rectangle(
         [SB + 4, SB + 10, SB + _sw - 4, SB + _sw - 10],
-        radius=44, fill=(0, 0, 0, 120)
+        radius=48, fill=(0, 0, 0, 115)
     )
     shadow_base = sh.filter(ImageFilter.GaussianBlur(SB))
 
-    # Marca de agua: SOLO texto, sin caja, muy transparente
-    # Alpha=70 sobre 255 → se ve pero no molesta para nada
-    fw  = _font(36)
-    WM_W, WM_H = 780, 52
-    wm  = Image.new("RGBA", (WM_W, WM_H), (0, 0, 0, 0))
-    wd  = ImageDraw.Draw(wm)
+    # Marca de agua: solo letras, sin ningun fondo ni caja
+    fw     = _font(36)
+    WM_W   = 780
+    WM_H   = 52
+    wm     = Image.new("RGBA", (WM_W, WM_H), (0, 0, 0, 0))
+    wd     = ImageDraw.Draw(wm)
     wd.text((WM_W // 2 + 1, WM_H // 2 + 1),
             "To-do en Uno  |  @impulso_dijital",
             font=fw, fill=(0, 0, 0, 25), anchor="mm")
     wd.text((WM_W // 2, WM_H // 2),
             "To-do en Uno  |  @impulso_dijital",
-            font=fw, fill=(255, 255, 255, 70), anchor="mm")
+            font=fw, fill=(255, 255, 255, 68), anchor="mm")
 
-    return bg, shadow_base, wm, (WM_W, WM_H)
+    # Cache de overlays spotlight (evita crear nuevas imagenes por frame)
+    spotlight_cache = {}
+    for alpha in range(0, 30, 5):
+        spotlight_cache[alpha] = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, alpha))
+
+    return bg, shadow_base, wm, (WM_W, WM_H), spotlight_cache
 
 
-# ── Genera un frame ───────────────────────────────────────────────────────────
-def _frame(prod_img, bg, shadow_base, wm_img, wm_size, frame_n):
+def _ap(img, a):
+    if a >= 0.999:
+        return img
+    r2, g2, b2, c2 = img.split()
+    c2 = c2.point(lambda x: int(x * a))
+    return Image.merge("RGBA", (r2, g2, b2, c2))
+
+
+def _frame(prod_img, bg, shadow_base, wm_img, wm_size, spotlight_cache, frame_n):
     t      = frame_n / TOTAL
-    canvas = bg.copy()
     WM_W, WM_H = wm_size
+    canvas = bg.copy()
 
-    # Fases de animacion
-    if t < 0.15:                         # ENTRADA: fade + slide suave
-        p       = _eoq(t / 0.15)
-        g_alpha = p
-        slide_y = int((1 - p) * 120)
-        scale   = 0.92 + 0.08 * p
+    # === ANIMACIONES ===
+    if t < 0.15:
+        # ENTRADA: producto entra desde abajo con fade suave
+        p        = _eoq(t / 0.15)
+        g_alpha  = p
+        scale    = 0.88 + 0.12 * p
+        float_y  = int((1 - p) * 100)
+        spotlight = 0
 
-    elif t < 0.88:                       # SHOWCASE: zoom arco suave (sin rebotes)
-        p       = (t - 0.15) / 0.73
-        g_alpha = 1.0
-        slide_y = 0
-        # Arco sinusoidal unico: sube 2.2% y vuelve — se ve vivo, no robotico
-        scale   = 1.0 + math.sin(p * math.pi) * 0.022
+    elif t < 0.88:
+        # SHOWCASE:
+        # BREATHE: escala sube y baja suavemente (2 ciclos)
+        # FLOAT:   producto flota arriba/abajo (2 ciclos sincronizados)
+        # SPOTLIGHT: fondo se oscurece levemente en cada peak
+        p        = (t - 0.15) / 0.73
+        g_alpha  = 1.0
+        scale    = 1.0 + math.sin(p * math.pi * 2) * 0.018
+        float_y  = int(math.sin(p * math.pi * 2) * 16)
+        spotlight = round(abs(math.sin(p * math.pi)) * 25 / 5) * 5
 
-    else:                                # SALIDA: fade out limpio
-        p       = (t - 0.88) / 0.12
-        g_alpha = 1.0 - _eio(p)
-        slide_y = 0
-        scale   = 1.0
+    else:
+        # SALIDA: fade out limpio
+        p        = (t - 0.88) / 0.12
+        g_alpha  = 1.0 - _eio(p)
+        scale    = 1.0
+        float_y  = 0
+        spotlight = 0
 
-    pw = int(PROD_SIZE * scale)
-    cw = pw + CARD_PAD * 2
-    ch = cw
+    # Spotlight: oscurece el fondo ligeramente para enfocar el producto
+    if spotlight > 0 and spotlight in spotlight_cache:
+        canvas = Image.alpha_composite(canvas, spotlight_cache[spotlight])
 
-    # Sombra (resize sin recalcular blur — rapido)
-    shadow = shadow_base.resize((cw + SB * 2, ch + SB * 2), Image.BILINEAR)
-
-    # Card blanca con producto — sin ningun texto encima
-    card = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-    cd   = ImageDraw.Draw(card)
-    cd.rounded_rectangle([0, 0, cw, ch], radius=44, fill=(255, 255, 255, 252))
-    pc = prod_img.copy()
+    # Card del producto
+    pw     = int(PROD_MAX * scale)
+    cw     = pw + CARD_PAD * 2
+    shadow = shadow_base.resize((cw + SB * 2, cw + SB * 2), Image.BILINEAR)
+    card   = Image.new("RGBA", (cw, cw), (0, 0, 0, 0))
+    cd     = ImageDraw.Draw(card)
+    cd.rounded_rectangle([0, 0, cw, cw], radius=48, fill=(255, 255, 255, 252))
+    pc     = prod_img.copy()
     pc.thumbnail((pw, pw), Image.LANCZOS)
-    card.paste(pc, ((cw - pc.width) // 2, (ch - pc.height) // 2), pc)
-
-    # Aplicar alpha global
-    def _ap(img, a):
-        if a >= 0.999:
-            return img
-        r2, g2, b2, c2 = img.split()
-        c2 = c2.point(lambda x: int(x * a))
-        return Image.merge("RGBA", (r2, g2, b2, c2))
+    card.paste(pc, ((cw - pc.width) // 2, (cw - pc.height) // 2), pc)
 
     card   = _ap(card,   g_alpha)
-    shadow = _ap(shadow, g_alpha * 0.75)
+    shadow = _ap(shadow, g_alpha * 0.74)
 
-    # Posicion: centrado, ligeramente por encima del centro (balance visual)
     cx = (WIDTH  - cw) // 2
-    cy = (HEIGHT - ch) // 2 - 80 + slide_y
-
+    cy = (HEIGHT - cw) // 2 - 70 + float_y
     canvas.paste(shadow, (cx - SB, cy - SB), shadow)
     canvas.paste(card,   (cx, cy),           card)
 
-    # UNICO elemento de texto: marca de agua discreta abajo
+    # Unico elemento de texto: marca de agua abajo, sin caja
     if 0.12 < t < 0.88:
-        wx = (WIDTH  - WM_W) // 2
-        wy = HEIGHT - 140
-        canvas.alpha_composite(wm_img, (wx, wy))
+        canvas.alpha_composite(wm_img, ((WIDTH - WM_W) // 2, HEIGHT - 145))
 
     return canvas.convert("RGB")
 
 
-# ── Audio estilo soul jazz original ──────────────────────────────────────────
 def _make_audio(dur):
     """
-    Acorde Cmaj7 con walking bass y shimmer.
-    8 voces, max 2 filtros EQ (limite seguro con ffmpeg en Render).
+    Musica upbeat commercial moderna.
+    Progresion Am-F-C-G con bajo profundo, melodia brillante.
+    6 voces + bass/treble EQ — formula estable en Render.
     """
     out    = tempfile.mktemp(suffix=".aac")
-    freqs  = [65.41, 130.81, 196.00, 261.63, 329.63, 392.00, 523.25, 659.25]
-    vols   = [0.18,  0.24,   0.14,   0.20,   0.18,   0.16,   0.13,   0.07 ]
-    labels = list("abcdefgh")
+    freqs  = [130.81, 196.00, 220.00, 261.63, 329.63, 440.00]
+    vols   = [0.26,   0.18,   0.20,   0.22,   0.18,   0.10  ]
+    labels = list("abcdef")
 
     inp = []
     for f in freqs:
-        inp += ["-f", "lavfi", "-i", "sine=frequency=" + str(f) + ":duration=" + str(dur)]
+        inp += ["-f", "lavfi", "-i",
+                "sine=frequency=" + str(f) + ":duration=" + str(dur)]
 
     parts = [f"[{i}]volume={v}[{l}]" for i, (l, v) in enumerate(zip(labels, vols))]
-    mix   = "".join(f"[{l}]" for l in labels) + "amix=inputs=8:duration=longest"
-    chain = (
-        ";" .join(parts) + ";" + mix
-        + ",bass=g=8"
-        + ",treble=g=5"
-        + ",highpass=f=40"
-        + ",afade=t=in:st=0:d=1.5"
+    mix   = "".join(f"[{l}]" for l in labels) + "amix=inputs=6:duration=longest"
+    fc    = (
+        ";".join(parts) + ";" + mix
+        + ",bass=g=10"
+        + ",treble=g=7"
+        + ",highpass=f=50"
+        + ",afade=t=in:st=0:d=1.2"
         + ",afade=t=out:st=" + str(dur - 2) + ":d=1.8"
-        + ",volume=1.1"
+        + ",volume=1.15"
     )
 
-    cmd = ["ffmpeg", "-y"] + inp + ["-filter_complex", chain,
+    cmd = ["ffmpeg", "-y"] + inp + ["-filter_complex", fc,
                                      "-c:a", "aac", "-b:a", "192k", out]
-    r = subprocess.run(cmd, capture_output=True, timeout=25)
+    r = subprocess.run(cmd, capture_output=True, timeout=20)
     if r.returncode == 0:
         return out
-    print("Audio sin musica:", r.stderr.decode()[-80:], flush=True)
+    print("Audio error: " + r.stderr.decode()[-80:], flush=True)
     return None
 
 
-# ── Pipeline principal ────────────────────────────────────────────────────────
 def create_marketing_video(product_name, image_url):
-    print("Iniciando reel 9:16 " + str(DUR) + "s...", flush=True)
+    print("Iniciando reel " + str(DUR) + "s...", flush=True)
 
     prod_img = _download(image_url)
     if prod_img is None:
         prod_img = Image.new("RGBA", (600, 600), (35, 35, 35, 255))
 
-    bg, shadow_base, wm_img, wm_size = _build_resources(prod_img)
+    bg, shadow_base, wm_img, wm_size, spotlight_cache = _build_resources(prod_img)
     audio_path = _make_audio(DUR)
     out_path   = tempfile.mktemp(suffix=".mp4")
 
@@ -243,10 +242,12 @@ def create_marketing_video(product_name, image_url):
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
         for i in range(TOTAL):
-            frm = _frame(prod_img, bg, shadow_base, wm_img, wm_size, i)
+            frm = _frame(prod_img, bg, shadow_base,
+                         wm_img, wm_size, spotlight_cache, i)
             proc.stdin.write(frm.tobytes())
             if i % 75 == 0:
-                print("  " + str(round(i / TOTAL * 100)) + "% (" + str(round(time.time() - t0)) + "s)", flush=True)
+                print("  " + str(round(i / TOTAL * 100)) + "% ("
+                      + str(round(time.time() - t0)) + "s)", flush=True)
 
         proc.stdin.close()
         proc.wait()
@@ -256,7 +257,8 @@ def create_marketing_video(product_name, image_url):
             return None
 
         size = os.path.getsize(out_path) / 1024
-        print("Reel listo: " + str(round(size)) + "KB en " + str(round(time.time() - t0)) + "s", flush=True)
+        print("Reel listo: " + str(round(size)) + "KB en "
+              + str(round(time.time() - t0)) + "s", flush=True)
         return out_path
 
     except Exception as e:
@@ -270,7 +272,6 @@ def create_marketing_video(product_name, image_url):
                 pass
 
 
-# ── Punto de entrada ──────────────────────────────────────────────────────────
 def generate_image(product_name, image_url=None):
     if not image_url:
         return None, None
