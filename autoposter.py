@@ -96,18 +96,72 @@ def post_image_to_facebook(text, image_path):
 
 
 def post_video_to_facebook(text, video_path):
+    """
+    Publica como Reel en Facebook.
+    Los Reels siempre tienen audio — el endpoint /videos a veces silencia el audio.
+    Flujo: start -> upload binario -> finish/publish
+    """
     try:
-        url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/videos"
+        # Paso 1: iniciar el upload del reel
+        start_url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/video_reels"
+        r1 = requests.post(start_url, data={
+            "upload_phase": "start",
+            "access_token": FACEBOOK_TOKEN
+        })
+        r1_json = r1.json()
+        video_id = r1_json.get("video_id")
+
+        if not video_id:
+            # Fallback al endpoint clasico si falla el reel
+            print("⚠️ Reel start fallo (" + str(r1_json) + "), usando /videos...", flush=True)
+            url2 = f"https://graph.facebook.com/v18.0/{PAGE_ID}/videos"
+            with open(video_path, "rb") as f:
+                r2 = requests.post(url2, data={
+                    "description":  text,
+                    "access_token": FACEBOOK_TOKEN
+                }, files={"source": f})
+            res2 = r2.json()
+            if "id" in res2:
+                print("✅ Video publicado en Facebook: " + res2["id"], flush=True)
+            else:
+                print("❌ Error Facebook video: " + str(res2), flush=True)
+            return
+
+        # Paso 2: subir el archivo binario
+        file_size = os.path.getsize(video_path)
+        upload_url = "https://rupload.facebook.com/video-upload/v18.0/" + video_id
         with open(video_path, "rb") as f:
-            response = requests.post(url, data={
-                "description":  text,
-                "access_token": FACEBOOK_TOKEN
-            }, files={"source": f})
-        result = response.json()
-        if "id" in result:
-            print("✅ Video publicado en Facebook: " + result["id"], flush=True)
+            r2 = requests.post(
+                upload_url,
+                headers={
+                    "Authorization": "OAuth " + FACEBOOK_TOKEN,
+                    "offset":        "0",
+                    "file_size":     str(file_size),
+                    "Content-Type":  "application/octet-stream",
+                },
+                data=f,
+                timeout=120
+            )
+        r2_json = r2.json()
+        if not r2_json.get("success"):
+            print("❌ Error upload binario Facebook: " + str(r2_json), flush=True)
+            return
+
+        # Paso 3: publicar el reel
+        r3 = requests.post(start_url, data={
+            "video_id":         video_id,
+            "upload_phase":     "finish",
+            "video_state":      "PUBLISHED",
+            "description":      text,
+            "content_category": "PRODUCT",
+            "access_token":     FACEBOOK_TOKEN
+        })
+        r3_json = r3.json()
+        if r3_json.get("success") or "id" in r3_json:
+            print("✅ Reel publicado en Facebook con audio: " + video_id, flush=True)
         else:
-            print("❌ Error Facebook video: " + str(result), flush=True)
+            print("❌ Error publicando reel Facebook: " + str(r3_json), flush=True)
+
     except Exception as e:
         print("❌ Error Facebook video: " + str(e), flush=True)
 
