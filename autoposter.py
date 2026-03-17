@@ -77,6 +77,34 @@ def _delete_from_cloudinary(public_id):
         print("Advertencia Cloudinary delete: " + str(e), flush=True)
 
 
+def _upload_to_cloudinary_image(file_path):
+    """Sube una imagen a Cloudinary para obtener URL publica."""
+    try:
+        import hashlib
+        timestamp = str(int(time.time()))
+        sign_str  = "timestamp=" + timestamp + CLOUDINARY_API_SECRET
+        signature = hashlib.sha1(sign_str.encode()).hexdigest()
+        url = "https://api.cloudinary.com/v1_1/" + CLOUDINARY_CLOUD_NAME + "/image/upload"
+        print("☁️  Subiendo imagen a Cloudinary...", flush=True)
+        with open(file_path, "rb") as f:
+            response = requests.post(url, data={
+                "api_key":   CLOUDINARY_API_KEY,
+                "timestamp": timestamp,
+                "signature": signature,
+            }, files={"file": f}, timeout=60)
+        result = response.json()
+        public_url = result.get("secure_url")
+        if public_url:
+            print("✅ Imagen en Cloudinary: " + public_url[:60] + "...", flush=True)
+            return public_url, result.get("public_id")
+        else:
+            print("❌ Cloudinary imagen error: " + str(result), flush=True)
+            return None, None
+    except Exception as e:
+        print("❌ Error subiendo imagen Cloudinary: " + str(e), flush=True)
+        return None, None
+
+
 # ── Facebook ──────────────────────────────────────────────────────────────────
 def post_image_to_facebook(text, image_path):
     try:
@@ -278,9 +306,14 @@ def post_to_social(text, media=None):
 
     elif media_type == "image":
         post_image_to_facebook(text, media_path)
-        # Para imagen en Instagram usar URL de Amazon directamente
-        # (la imagen del producto ya es URL publica)
-        print("ℹ️ Instagram imagen: usa URL publica del producto", flush=True)
+        # Subir imagen a Cloudinary para obtener URL publica para Instagram
+        public_url, public_id = _upload_to_cloudinary_image(media_path)
+        if public_url:
+            post_image_to_instagram(text, public_url)
+            if public_id:
+                _delete_from_cloudinary(public_id)
+        else:
+            print("⚠️ No se pudo subir imagen a Cloudinary, saltando Instagram", flush=True)
 
     # Limpiar archivo local temporal
     try:
