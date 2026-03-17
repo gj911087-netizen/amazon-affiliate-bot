@@ -27,10 +27,8 @@ except Exception as e:
     sys.exit(1)
 
 # ── Historial persistente en disco ────────────────────────────────────────────
-# Se guarda en /opt/render/project/src/posted_asins.json
-# Este archivo persiste entre reinicios del bot en Render
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "posted_asins.json")
-MAX_HISTORY  = 300   # maximo de ASINs a recordar
+MAX_HISTORY  = 300
 
 def load_history():
     try:
@@ -44,13 +42,12 @@ def load_history():
 
 def save_history(posted):
     try:
-        # Si supera el maximo, eliminar los mas antiguos (lista FIFO)
         asins_list = list(posted)
         if len(asins_list) > MAX_HISTORY:
             asins_list = asins_list[-MAX_HISTORY:]
         with open(HISTORY_FILE, "w") as f:
             json.dump({"asins": asins_list}, f)
-        print("📋 Historial guardado: " + str(len(asins_list)) + " productos", flush=True)
+        print("📋 Historial: " + str(len(asins_list)) + " productos", flush=True)
     except Exception as e:
         print("Advertencia guardar historial: " + str(e), flush=True)
 
@@ -58,27 +55,22 @@ def save_history(posted):
 print("🤖 Bot ejecutándose...", flush=True)
 
 try:
-    # Cargar historial de productos ya publicados
     posted_asins = load_history()
-    print("📋 Historial cargado: " + str(len(posted_asins)) + " productos ya publicados", flush=True)
+    print("📋 Historial cargado: " + str(len(posted_asins)) + " publicados", flush=True)
 
-    # Buscar productos
     products = find_products()
     if not products:
         print("⚠️ Sin productos disponibles", flush=True)
         sys.exit(0)
 
-    # Filtrar los que ya se publicaron
     nuevos = [p for p in products if p.get("asin") not in posted_asins]
-    print("🆕 Productos nuevos disponibles: " + str(len(nuevos)) + " de " + str(len(products)), flush=True)
+    print("🆕 Productos nuevos: " + str(len(nuevos)) + " de " + str(len(products)), flush=True)
 
-    # Si todos ya fueron publicados, limpiar historial y usar todos
     if not nuevos:
         print("🔄 Todos publicados, reiniciando historial...", flush=True)
         posted_asins = set()
         nuevos = products
 
-    # Elegir producto aleatorio de los nuevos
     product   = random.choice(nuevos)
     asin      = product.get("asin")
     name      = product.get("product_title", "Producto Amazon")
@@ -93,12 +85,15 @@ try:
 
     link  = generate_affiliate_link(asin)
     text  = generate_marketing_text(name, link)
+
+    # Genera imagen con fondo elegante, badge dorado y marcas de agua
     media = generate_image(name, image_url)
 
-    post_to_social(text, media)
-    log_post(name, link)
+    # Facebook: recibe archivo local con diseño completo
+    # Instagram: recibe URL publica de Amazon (no necesita Cloudinary)
+    post_to_social(text, media, amazon_image_url=image_url)
 
-    # Guardar en historial
+    log_post(name, link)
     posted_asins.add(asin)
     save_history(posted_asins)
 
