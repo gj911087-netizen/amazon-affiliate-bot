@@ -183,6 +183,7 @@ def _draw_beneficios(draw, visible=4, alpha=255):
     pad  = 55
     bh   = 54
     gap  = 10
+    visible = min(visible, len(BENEFICIOS))  # nunca superar el total
     total_h = visible*(bh+gap)
     y_start = HEIGHT - total_h - 185
 
