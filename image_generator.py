@@ -6,7 +6,6 @@ Usa solo Pillow + imageio — sin ffmpeg, funciona en Render plan gratuito.
 import os
 import tempfile
 import requests
-import imageio
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from io import BytesIO
@@ -123,10 +122,8 @@ def _draw_hook(draw, text, alpha):
     text_color = (255, 255, 255, min(alpha, 255))
     acc = PALETA["accent"]
     y = 168
-    # Sombra
     draw.text((WIDTH // 2 + 3, y + 3), text, font=font, fill=shadow_color, anchor="mm")
     draw.text((WIDTH // 2, y), text, font=font, fill=text_color, anchor="mm")
-    # Subrayado accent
     bbox = draw.textbbox((0, 0), text, font=font)
     tw = bbox[2] - bbox[0]
     draw.rectangle([WIDTH // 2 - tw // 2, y + 38,
@@ -149,12 +146,9 @@ def _draw_beneficios(draw, visible=4, alpha=255):
     for i, (icon, txt) in enumerate(BENEFICIOS[:visible]):
         y = y_start + i * 58
         a = min(alpha, 255)
-        # Pill de fondo
         draw.rounded_rectangle([80, y - 18, WIDTH - 80, y + 34],
                                 radius=20, fill=(255, 255, 255, int(18 * a / 255)))
-        # Icono
         draw.text((130, y + 8), icon, font=font_icon, fill=(*acc, a), anchor="mm")
-        # Texto
         draw.text((160, y + 8), txt, font=font_txt, fill=(255, 255, 255, a), anchor="lm")
 
 # ── Etiquetas pop ─────────────────────────────────────────────────────────────
@@ -183,36 +177,30 @@ def _draw_cta(draw, pulse=1.0, alpha=255):
     bx = (WIDTH - bw) // 2
     by = HEIGHT - 160
     a = min(alpha, 255)
-    # Sombra glow
     draw.rounded_rectangle([bx - 8, by - 8, bx + bw + 8, by + bh + 8],
                             radius=42, fill=(*acc, int(60 * a / 255)))
-    # Botón principal
     draw.rounded_rectangle([bx, by, bx + bw, by + bh],
                             radius=36, fill=(*acc, a))
     font = _font(34)
     draw.text((WIDTH // 2, by + bh // 2), "👉  Compra Ahora en Amazon",
               font=font, fill=(15, 15, 15, 255), anchor="mm")
-    # Watermarks
     fw = _font(26)
     draw.text((WIDTH // 2, HEIGHT - 60), "To-do en Uno  •  @impulso_dijital",
               font=fw, fill=(255, 255, 255, 70), anchor="mm")
 
 # ── Producto centrado con zoom/float ─────────────────────────────────────────
 def _paste_product(canvas, prod_img, scale=1.0, float_y=0):
-    """Pega el producto centrado con escala y desplazamiento vertical."""
     size = int(420 * scale)
     prod = prod_img.copy()
     prod.thumbnail((size, size), Image.LANCZOS)
     pw, ph = prod.size
     px = (WIDTH - pw) // 2
-    py = (HEIGHT - ph) // 2 - 60 + float_y  # centro visual ligeramente arriba
-    # Sombra suave
+    py = (HEIGHT - ph) // 2 - 60 + float_y
     shadow = Image.new("RGBA", (pw + 40, ph + 40), (0, 0, 0, 0))
     sd = ImageDraw.Draw(shadow)
     sd.ellipse([10, ph - 10, pw + 30, ph + 35], fill=(0, 0, 0, 60))
     shadow = shadow.filter(ImageFilter.GaussianBlur(12))
     canvas.paste(shadow, (px - 20, py - 20), shadow)
-    # Producto
     canvas.paste(prod, (px, py), prod)
 
 # ── GENERADOR PRINCIPAL DE FRAMES ────────────────────────────────────────────
@@ -230,9 +218,8 @@ def create_animated_gif(product_name, image_url):
     # Preparar imagen del producto con fondo transparente
     prod_img = prod_img.convert("RGBA")
 
-    frames = []
-    FPS = 12  # frames por segundo
-    # Fases: hook(1.5s) | producto(2s) | beneficios(2.5s) | tags(1.5s) | cta(2s) = ~10s
+    gif_frames = []  # solo guardamos PIL Images, no numpy arrays
+    FPS = 10
     FASE = [
         ("hook",        int(1.5 * FPS)),
         ("producto",    int(2.0 * FPS)),
@@ -244,40 +231,34 @@ def create_animated_gif(product_name, image_url):
     total_frames = sum(n for _, n in FASE)
     frame_idx = 0
 
-    # Hooks rotativos para variedad
     hooks = ["¡Esto te va a encantar! 🔥", "¡Descubre lo nuevo! ✨", "¡No te lo pierdas! 👀"]
     hook_text = random.choice(hooks)
 
     for fase_name, n_frames in FASE:
         for fi in range(n_frames):
-            t = fi / max(n_frames - 1, 1)  # 0.0 → 1.0
+            t = fi / max(n_frames - 1, 1)
             et = _ease_in_out(t)
 
             canvas = _make_bg()
             draw = ImageDraw.Draw(canvas)
 
-            # Decoraciones siempre visibles
             _draw_deco(draw, progress=1.0)
             _draw_badge(draw, alpha=255)
 
             if fase_name == "hook":
                 alpha = int(255 * et) if t < 0.5 else 255
                 _draw_hook(draw, hook_text, alpha)
-                # Producto ya aparece de fondo suave
                 _paste_product(canvas, prod_img, scale=0.6 + 0.1 * et, float_y=0)
 
             elif fase_name == "producto":
                 _draw_hook(draw, hook_text, alpha=80)
-                # Zoom in elegante
                 scale = 0.7 + 0.3 * et
                 float_y = int(-15 * np.sin(t * np.pi))
                 _paste_product(canvas, prod_img, scale=scale, float_y=float_y)
 
             elif fase_name == "beneficios":
-                # Producto flotando
                 float_y = int(-10 * np.sin(t * 2 * np.pi))
                 _paste_product(canvas, prod_img, scale=0.72, float_y=float_y - 60)
-                # Beneficios aparecen uno a uno
                 visible = max(1, int(et * 4) + 1)
                 alpha = int(255 * min(t * 3, 1.0))
                 _draw_beneficios(draw, visible=visible, alpha=alpha)
@@ -291,36 +272,37 @@ def create_animated_gif(product_name, image_url):
             elif fase_name == "cta":
                 _paste_product(canvas, prod_img, scale=0.60, float_y=-80)
                 _draw_beneficios(draw, visible=4, alpha=80)
-                # Pulso del botón
                 pulse = 1.0 + 0.04 * np.sin(t * 4 * np.pi)
                 alpha = int(255 * min(t * 2, 1.0))
                 _draw_cta(draw, pulse=pulse, alpha=alpha)
-                # Nombre del producto
                 font_name = _font(26)
                 name_short = product_name[:55] + ("..." if len(product_name) > 55 else "")
                 draw.text((WIDTH // 2, HEIGHT - 195), name_short,
                           font=font_name, fill=(220, 220, 220, 180), anchor="mm")
 
-            # Convertir a RGB para imageio
-            rgb = canvas.convert("RGB")
-            frames.append(np.array(rgb))
+            # Guardar como PIL Image reducida en paleta para ahorrar RAM
+            rgb = canvas.convert("RGB").convert("P", palette=Image.ADAPTIVE, colors=128)
+            gif_frames.append(rgb)
             frame_idx += 1
 
         print(f"  ✅ Fase '{fase_name}' completada ({n_frames} frames)", flush=True)
 
-    # Guardar GIF
+    # Guardar GIF usando Pillow directamente (sin numpy, mucho menos RAM)
     out_path = tempfile.mktemp(suffix=".gif")
-    duration = 1.0 / FPS  # segundos por frame
+    duration_ms = int(1000 / FPS)
 
-    imageio.mimsave(
+    gif_frames[0].save(
         out_path,
-        frames,
         format="GIF",
-        duration=duration,
-        loop=0,          # loop infinito
-        palettesize=256,
-        subrectangles=True,  # compresión inteligente
+        save_all=True,
+        append_images=gif_frames[1:],
+        duration=duration_ms,
+        loop=0,
+        optimize=True,
     )
+
+    # Liberar memoria inmediatamente
+    gif_frames.clear()
 
     size_kb = os.path.getsize(out_path) // 1024
     print(f"✅ GIF listo: {size_kb}KB | {total_frames} frames | ~{total_frames // FPS}s", flush=True)
