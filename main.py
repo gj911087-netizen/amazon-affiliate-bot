@@ -2,11 +2,9 @@ import time
 import os
 import sys
 import random
-import json
-
+import requests as req_lib
 sys.stderr = sys.stdout
 print("INICIO", flush=True)
-
 try:
     from product_engine import find_products
     print("OK product_engine", flush=True)
@@ -26,37 +24,56 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-# ── Historial persistente en disco ────────────────────────────────────────────
-HISTORY_FILE = os.path.join(os.path.dirname(__file__), "posted_asins.json")
-MAX_HISTORY  = 300
+# ── Supabase ──────────────────────────────────────────────────────────────────
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+HEADERS_SB = {
+    "apikey":        SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type":  "application/json",
+    "Prefer":        "return=minimal"
+}
 
 def load_history():
+    """Carga todos los ASINs publicados desde Supabase."""
     try:
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, "r") as f:
-                data = json.load(f)
-                return set(data.get("asins", []))
+        url = f"{SUPABASE_URL}/rest/v1/posted_products?select=asin"
+        r   = req_lib.get(url, headers=HEADERS_SB, timeout=10)
+        data = r.json()
+        asins = set(row["asin"] for row in data if "asin" in row)
+        print(f"📋 Historial Supabase: {len(asins)} productos publicados", flush=True)
+        return asins
     except Exception as e:
-        print("Advertencia historial: " + str(e), flush=True)
-    return set()
+        print(f"⚠️ Error cargando historial Supabase: {e}", flush=True)
+        return set()
 
-def save_history(posted):
+def save_to_history(asin, product_name):
+    """Guarda el ASIN publicado en Supabase."""
     try:
-        asins_list = list(posted)
-        if len(asins_list) > MAX_HISTORY:
-            asins_list = asins_list[-MAX_HISTORY:]
-        with open(HISTORY_FILE, "w") as f:
-            json.dump({"asins": asins_list}, f)
-        print("📋 Historial: " + str(len(asins_list)) + " productos", flush=True)
+        url  = f"{SUPABASE_URL}/rest/v1/posted_products"
+        body = {"asin": asin, "product_name": product_name[:200]}
+        r    = req_lib.post(url, headers=HEADERS_SB, json=body, timeout=10)
+        if r.status_code in (200, 201):
+            print(f"✅ ASIN guardado en Supabase: {asin}", flush=True)
+        else:
+            print(f"⚠️ Supabase respuesta: {r.status_code} {r.text}", flush=True)
     except Exception as e:
-        print("Advertencia guardar historial: " + str(e), flush=True)
+        print(f"⚠️ Error guardando en Supabase: {e}", flush=True)
+
+def clear_history():
+    """Borra todo el historial cuando ya se publicaron todos."""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/posted_products?asin=neq.null"
+        r   = req_lib.delete(url, headers=HEADERS_SB, timeout=10)
+        print(f"🔄 Historial Supabase borrado: {r.status_code}", flush=True)
+    except Exception as e:
+        print(f"⚠️ Error borrando historial: {e}", flush=True)
 
 # ── Bot ───────────────────────────────────────────────────────────────────────
 print("🤖 Bot ejecutándose...", flush=True)
-
 try:
     posted_asins = load_history()
-    print("📋 Historial cargado: " + str(len(posted_asins)) + " publicados", flush=True)
 
     products = find_products()
     if not products:
@@ -64,11 +81,11 @@ try:
         sys.exit(0)
 
     nuevos = [p for p in products if p.get("asin") not in posted_asins]
-    print("🆕 Productos nuevos: " + str(len(nuevos)) + " de " + str(len(products)), flush=True)
+    print(f"🆕 Productos nuevos: {len(nuevos)} de {len(products)}", flush=True)
 
     if not nuevos:
         print("🔄 Todos publicados, reiniciando historial...", flush=True)
-        posted_asins = set()
+        clear_history()
         nuevos = products
 
     product   = random.choice(nuevos)
@@ -85,17 +102,13 @@ try:
 
     link  = generate_affiliate_link(asin)
     text  = generate_marketing_text(name, link)
-
-    # Genera imagen con fondo elegante, badge dorado y marcas de agua
     media = generate_image(name, image_url)
 
-    # Facebook: recibe archivo local con diseño completo
-    # Instagram: recibe URL publica de Amazon (no necesita Cloudinary)
     post_to_social(text, media, amazon_image_url=image_url)
-
     log_post(name, link)
-    posted_asins.add(asin)
-    save_history(posted_asins)
+
+    # Guardar en Supabase — persiste aunque Render reinicie
+    save_to_history(asin, name)
 
     media_type = media[0] if media else "unknown"
     print(f"✅ Publicado ({media_type}): {name}", flush=True)
