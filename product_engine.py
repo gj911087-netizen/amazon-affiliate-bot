@@ -4,16 +4,23 @@ import re
 import time
 from config import PRODUCT_LIMIT
 
-# Solo 2 categorias: bebes y automotriz
+# ── Categorías: Hogar y Cocina ────────────────────────────────────────────────
 BESTSELLER_URLS = [
-    "https://www.amazon.com/Best-Sellers-Baby-Products/zgbs/baby-products/",
-    "https://www.amazon.com/Best-Sellers-Baby-Products/zgbs/baby-products/166846011",
-    "https://www.amazon.com/Best-Sellers-Baby-Products/zgbs/baby-products/165796011",
-    "https://www.amazon.com/Best-Sellers-Baby-Products/zgbs/baby-products/3777261",
-    "https://www.amazon.com/Best-Sellers-Automotive/zgbs/automotive/",
-    "https://www.amazon.com/Best-Sellers-Automotive/zgbs/automotive/15684181",
-    "https://www.amazon.com/Best-Sellers-Automotive/zgbs/automotive/15690151",
-    "https://www.amazon.com/Best-Sellers-Automotive/zgbs/automotive/15706371",
+    # Kitchen & Dining
+    "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/",
+    "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289857",     # Cookware
+    "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/284507",     # Gadgets
+    "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/3741421",    # Coffee
+    "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/679248011",  # Storage
+    # Home & Garden
+    "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/",
+    "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063498",        # Bedding
+    "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063306",        # Bath
+    "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3732961",        # Cleaning
+    "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733781",        # Organization
+    # Small Appliances
+    "https://www.amazon.com/Best-Sellers-Home-Kitchen-Small-Appliances/zgbs/appliances/",
+    "https://www.amazon.com/Best-Sellers-Home-Kitchen-Small-Appliances/zgbs/appliances/3736281",
 ]
 
 USER_AGENTS = [
@@ -91,15 +98,15 @@ def get_asins_from_bestsellers(url):
 
 def find_products():
     while True:
-        # Elegir 1 URL de bebes y 1 de automotriz para variedad
-        baby_urls = [u for u in BESTSELLER_URLS if "baby" in u]
-        auto_urls = [u for u in BESTSELLER_URLS if "automotive" in u]
+        # Mezclar categorías para variedad: cocina + hogar
+        kitchen_urls = [u for u in BESTSELLER_URLS if "kitchen" in u.lower() or "appliances" in u.lower()]
+        home_urls    = [u for u in BESTSELLER_URLS if "garden" in u.lower()]
 
         urls = []
-        if baby_urls:
-            urls.append(random.choice(baby_urls))
-        if auto_urls:
-            urls.append(random.choice(auto_urls))
+        if kitchen_urls:
+            urls.append(random.choice(kitchen_urls))
+        if home_urls:
+            urls.append(random.choice(home_urls))
 
         clean_products = []
         seen_asins = set()
@@ -137,7 +144,7 @@ def find_products():
                 print(f"✅ {asin} | {title[:50]}", flush=True)
 
         if clean_products:
-            print(f"✅ Total productos: {len(clean_products)}", flush=True)
+            print(f"✅ Total productos hogar/cocina: {len(clean_products)}", flush=True)
             return clean_products
 
         print("⚠️ Sin productos, reintentando en 5 min...", flush=True)
