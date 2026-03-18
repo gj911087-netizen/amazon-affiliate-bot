@@ -35,7 +35,7 @@ def create_marketing_image(product_name, image_url):
 
     # Redimensionar a 1080x1080 manteniendo proporción (cover)
     iw, ih = img.size
-    scale  = max(WIDTH / iw, HEIGHT / ih)
+    scale  = min(WIDTH / iw, HEIGHT / ih)
     new_w  = int(iw * scale)
     new_h  = int(ih * scale)
     img    = img.resize((new_w, new_h), Image.LANCZOS)
