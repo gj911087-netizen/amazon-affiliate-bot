@@ -1,31 +1,47 @@
 """
 image_generator.py
-Genera un GIF animado profesional tipo flyer para productos de hogar y cocina.
-Usa solo Pillow + imageio — sin ffmpeg, funciona en Render plan gratuito.
+Flyer animado profesional para productos de hogar y cocina.
+Producto GRANDE y centrado, diseño llamativo, layout tipo e-commerce.
+Solo Pillow + numpy — sin ffmpeg, funciona en Render plan gratuito.
 """
 import os
 import tempfile
 import requests
 import numpy as np
+import math
+import random
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from io import BytesIO
 
 WIDTH  = 1080
 HEIGHT = 1080
 
-# ── Paleta de colores para hogar/cocina ───────────────────────────────────────
+# ── Paletas vibrantes y profesionales ────────────────────────────────────────
 PALETAS = [
-    {"bg": (15, 15, 25),     "accent": (255, 180, 0),   "accent2": (255, 100, 30)},   # dorado/naranja
-    {"bg": (10, 25, 20),     "accent": (0, 220, 140),   "accent2": (0, 180, 255)},    # verde menta
-    {"bg": (25, 10, 35),     "accent": (200, 80, 255),  "accent2": (255, 60, 120)},   # púrpura
-    {"bg": (25, 15, 10),     "accent": (255, 120, 50),  "accent2": (255, 200, 80)},   # naranja cálido
-    {"bg": (10, 20, 35),     "accent": (50, 150, 255),  "accent2": (0, 220, 200)},    # azul marino
+    {"bg1": (8,12,35),   "bg2": (20,40,80),  "accent": (0,180,255),  "accent2": (0,255,200),  "text": (255,255,255)},
+    {"bg1": (25,5,5),    "bg2": (60,10,10),  "accent": (255,60,60),  "accent2": (255,180,0),  "text": (255,255,255)},
+    {"bg1": (5,20,15),   "bg2": (10,50,35),  "accent": (0,220,120),  "accent2": (0,200,255),  "text": (255,255,255)},
+    {"bg1": (15,5,30),   "bg2": (40,10,70),  "accent": (180,80,255), "accent2": (255,80,180), "text": (255,255,255)},
+    {"bg1": (20,10,5),   "bg2": (50,25,5),   "accent": (255,130,0),  "accent2": (255,220,0),  "text": (255,255,255)},
 ]
-
-import random
 PALETA = random.choice(PALETAS)
 
-# ── Fuentes ────────────────────────────────────────────────────────────────────
+BENEFICIOS = [
+    "✅  Alta calidad garantizada",
+    "✅  Fácil de usar",
+    "✅  Diseño moderno y práctico",
+    "✅  Ideal para tu hogar",
+]
+TAGS  = ["⚡ Innovador", "👌 Práctico", "🔄 Versátil", "🏆 Top Ventas"]
+HOOKS = [
+    "¡Esto te va a encantar! 🔥",
+    "¡Descubre lo nuevo! ✨",
+    "¡No te lo pierdas! 👀",
+    "¡Lo más vendido! 🏆",
+    "¡Tremenda oferta! 💥",
+]
+
+# ── Fuentes ───────────────────────────────────────────────────────────────────
 def _font(size):
     for p in [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -34,262 +50,304 @@ def _font(size):
         "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
     ]:
         if os.path.exists(p):
-            try:
-                return ImageFont.truetype(p, size)
-            except Exception:
-                pass
+            try: return ImageFont.truetype(p, size)
+            except: pass
     return ImageFont.load_default()
 
-# ── Descarga imagen producto ───────────────────────────────────────────────────
+def _font_r(size):
+    for p in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+    ]:
+        if os.path.exists(p):
+            try: return ImageFont.truetype(p, size)
+            except: pass
+    return _font(size)
+
 def _download(url):
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         return Image.open(BytesIO(r.content)).convert("RGBA")
     except Exception as e:
-        print("⚠️ Advertencia imagen: " + str(e), flush=True)
+        print("⚠️ Error imagen: " + str(e), flush=True)
         return None
 
-# ── Texto con wrap automático ──────────────────────────────────────────────────
-def _wrap_text(text, font, max_width, draw):
-    words = text.split()
-    lines = []
-    current = ""
-    for word in words:
-        test = (current + " " + word).strip()
-        bbox = draw.textbbox((0, 0), test, font=font)
-        if bbox[2] - bbox[0] <= max_width:
-            current = test
-        else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-    return lines
-
-# ── Fondo con degradado ────────────────────────────────────────────────────────
-def _make_bg(alpha=255):
-    bg = Image.new("RGBA", (WIDTH, HEIGHT), (*PALETA["bg"], alpha))
+# ── Fondo con degradado + halo central ───────────────────────────────────────
+def _make_bg():
+    bg   = Image.new("RGBA", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(bg)
-    # Degradado circular desde el centro
-    cx, cy = WIDTH // 2, HEIGHT // 2
-    for r in range(max(WIDTH, HEIGHT), 0, -20):
-        t = r / max(WIDTH, HEIGHT)
-        c = tuple(int(PALETA["bg"][i] + (PALETA["accent"][i] - PALETA["bg"][i]) * (1 - t) * 0.3) for i in range(3))
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*c, alpha))
+    bg1  = PALETA["bg1"]
+    bg2  = PALETA["bg2"]
+    acc  = PALETA["accent"]
+
+    # Degradado vertical
+    for i in range(HEIGHT):
+        t = i / HEIGHT
+        r = int(bg1[0] + (bg2[0]-bg1[0])*t)
+        g = int(bg1[1] + (bg2[1]-bg1[1])*t)
+        b = int(bg1[2] + (bg2[2]-bg1[2])*t)
+        draw.line([(0,i),(WIDTH,i)], fill=(r,g,b,255))
+
+    # Halo luminoso detrás del producto
+    cx, cy = WIDTH//2, HEIGHT//2 - 20
+    for radius in range(360, 30, -12):
+        t     = radius / 360
+        alpha = int(28 * (1-t))
+        cr    = min(255, int(bg2[0] + (acc[0]-bg2[0])*(1-t)*0.6))
+        cg    = min(255, int(bg2[1] + (acc[1]-bg2[1])*(1-t)*0.6))
+        cb    = min(255, int(bg2[2] + (acc[2]-bg2[2])*(1-t)*0.6))
+        draw.ellipse([cx-radius, cy-radius, cx+radius, cy+radius], fill=(cr,cg,cb,alpha))
+
     return bg
 
-# ── Líneas decorativas ─────────────────────────────────────────────────────────
-def _draw_deco(draw, progress=1.0):
-    acc = PALETA["accent"]
+# ── Marco y esquinas decorativas ─────────────────────────────────────────────
+def _draw_frame(draw):
+    acc  = PALETA["accent"]
     acc2 = PALETA["accent2"]
-    # Línea superior
-    w = int(WIDTH * 0.7 * progress)
-    x0 = (WIDTH - w) // 2
-    draw.rectangle([x0, 28, x0 + w, 34], fill=(*acc, 200))
-    draw.rectangle([x0 + 10, 38, x0 + w - 10, 41], fill=(*acc2, 120))
-    # Línea inferior
-    draw.rectangle([x0, HEIGHT - 34, x0 + w, HEIGHT - 28], fill=(*acc, 200))
-    draw.rectangle([x0 + 10, HEIGHT - 41, x0 + w - 10, HEIGHT - 38], fill=(*acc2, 120))
-    # Esquinas — coordenadas siempre ordenadas (min, max)
-    corner = 60
-    thick = 6
-    for x, y, dx, dy in [(30, 30, 1, 1), (WIDTH - 30, 30, -1, 1),
-                          (30, HEIGHT - 30, 1, -1), (WIDTH - 30, HEIGHT - 30, -1, -1)]:
-        x1a, x2a = sorted([x, x + dx * corner])
-        y1a, y2a = sorted([y, y + dy * thick])
-        draw.rectangle([x1a, y1a, x2a, y2a], fill=(*acc, 180))
-        x1b, x2b = sorted([x, x + dx * thick])
-        y1b, y2b = sorted([y, y + dy * corner])
-        draw.rectangle([x1b, y1b, x2b, y2b], fill=(*acc, 180))
+    draw.rectangle([0, 0, WIDTH, 8],              fill=(*acc,  255))
+    draw.rectangle([0, 8, WIDTH, 14],             fill=(*acc2, 150))
+    draw.rectangle([0, HEIGHT-14, WIDTH, HEIGHT-8], fill=(*acc2, 150))
+    draw.rectangle([0, HEIGHT-8,  WIDTH, HEIGHT],   fill=(*acc,  255))
+    sz, tk = 55, 6
+    for cx, cy, dx, dy in [(0,0,1,1),(WIDTH,0,-1,1),(0,HEIGHT,1,-1),(WIDTH,HEIGHT,-1,-1)]:
+        x1,x2 = sorted([cx, cx+dx*sz])
+        y1,y2 = sorted([cy, cy+dy*tk])
+        draw.rectangle([x1,y1,x2,y2], fill=(*acc,220))
+        x1,x2 = sorted([cx, cx+dx*tk])
+        y1,y2 = sorted([cy, cy+dy*sz])
+        draw.rectangle([x1,y1,x2,y2], fill=(*acc,220))
 
-# ── Badge "HOGAR & COCINA" ─────────────────────────────────────────────────────
+# ── Badge HOGAR & COCINA ──────────────────────────────────────────────────────
 def _draw_badge(draw, alpha=255):
-    acc = PALETA["accent"]
-    bw, bh = 340, 48
-    bx = (WIDTH - bw) // 2
-    by = 60
-    draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=24,
-                            fill=(*acc, min(alpha, 230)))
-    font = _font(22)
-    draw.text((WIDTH // 2, by + bh // 2), "🏠 HOGAR & COCINA  •  AMAZON",
-              font=font, fill=(20, 20, 20, 255), anchor="mm")
+    acc  = PALETA["accent"]
+    text = "🏠  HOGAR & COCINA  •  AMAZON"
+    font = _font(24)
+    bbox = draw.textbbox((0,0), text, font=font)
+    tw   = bbox[2]-bbox[0]
+    pad  = 32
+    bw, bh = tw+pad*2, 48
+    bx = (WIDTH-bw)//2
+    by = 20
+    draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=24,
+                            fill=(*acc, min(alpha,240)))
+    draw.text((WIDTH//2, by+bh//2), text, font=font,
+              fill=(10,10,20,255), anchor="mm")
 
-# ── Hook text animado ──────────────────────────────────────────────────────────
-def _draw_hook(draw, text, alpha):
-    font = _font(68)
-    shadow_color = (0, 0, 0, min(alpha, 180))
-    text_color = (255, 255, 255, min(alpha, 255))
-    acc = PALETA["accent"]
-    y = 168
-    draw.text((WIDTH // 2 + 3, y + 3), text, font=font, fill=shadow_color, anchor="mm")
-    draw.text((WIDTH // 2, y), text, font=font, fill=text_color, anchor="mm")
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw = bbox[2] - bbox[0]
-    draw.rectangle([WIDTH // 2 - tw // 2, y + 38,
-                    WIDTH // 2 + tw // 2, y + 44], fill=(*acc, min(alpha, 220)))
+# ── Hook ──────────────────────────────────────────────────────────────────────
+def _draw_hook(draw, text, alpha, scale=1.0):
+    acc  = PALETA["accent"]
+    size = max(24, int(74*scale))
+    font = _font(size)
+    y    = 116
+    draw.text((WIDTH//2+4, y+4), text, font=font, fill=(0,0,0,min(alpha,150)), anchor="mm")
+    draw.text((WIDTH//2,   y),   text, font=font, fill=(255,255,255,min(alpha,255)), anchor="mm")
+    bbox = draw.textbbox((0,0), text, font=font)
+    tw   = bbox[2]-bbox[0]
+    lw   = int(tw * min(alpha/255, 1.0))
+    lx   = WIDTH//2 - lw//2
+    draw.rectangle([lx, y+size//2+4, lx+lw, y+size//2+10], fill=(*acc, min(alpha,230)))
+
+# ── Producto GRANDE con glow ───────────────────────────────────────────────────
+def _paste_product(canvas, prod_img, scale=1.0, float_y=0, glow=True):
+    max_size = int(720 * scale)
+    prod = prod_img.copy()
+    prod.thumbnail((max_size, max_size), Image.LANCZOS)
+    pw, ph = prod.size
+    px = (WIDTH  - pw) // 2
+    py = (HEIGHT - ph) // 2 - 20 + float_y
+
+    if glow:
+        acc = PALETA["accent"]
+        gl  = Image.new("RGBA", (pw+140, ph+140), (0,0,0,0))
+        gd  = ImageDraw.Draw(gl)
+        for r in range(70, 0, -5):
+            a = int(35*(1-r/70))
+            gd.ellipse([70-r, 70-r+ph//5, pw+70+r, ph+70-ph//5+r], fill=(*acc,a))
+        gl = gl.filter(ImageFilter.GaussianBlur(20))
+        canvas.paste(gl, (px-70, py-70), gl)
+
+        sh = Image.new("RGBA", (pw+80, 60), (0,0,0,0))
+        sd = ImageDraw.Draw(sh)
+        sd.ellipse([10, 8, pw+70, 52], fill=(0,0,0,90))
+        sh = sh.filter(ImageFilter.GaussianBlur(16))
+        canvas.paste(sh, (px-40, py+ph-10), sh)
+
+    canvas.paste(prod, (px, py), prod)
 
 # ── Beneficios ────────────────────────────────────────────────────────────────
-BENEFICIOS = [
-    ("✔", "Alta calidad garantizada"),
-    ("✔", "Fácil de usar"),
-    ("✔", "Diseño moderno"),
-    ("✔", "Ideal para tu hogar"),
-]
-
 def _draw_beneficios(draw, visible=4, alpha=255):
-    acc = PALETA["accent"]
+    acc  = PALETA["accent"]
     acc2 = PALETA["accent2"]
-    font_icon = _font(32)
-    font_txt  = _font(30)
-    y_start = HEIGHT - 310
-    for i, (icon, txt) in enumerate(BENEFICIOS[:visible]):
-        y = y_start + i * 58
-        a = min(alpha, 255)
-        draw.rounded_rectangle([80, y - 18, WIDTH - 80, y + 34],
-                                radius=20, fill=(255, 255, 255, int(18 * a / 255)))
-        draw.text((130, y + 8), icon, font=font_icon, fill=(*acc, a), anchor="mm")
-        draw.text((160, y + 8), txt, font=font_txt, fill=(255, 255, 255, a), anchor="lm")
+    font = _font(29)
+    pad  = 55
+    bh   = 54
+    gap  = 10
+    total_h = visible*(bh+gap)
+    y_start = HEIGHT - total_h - 185
 
-# ── Etiquetas pop ─────────────────────────────────────────────────────────────
-TAGS = ["Innovador", "Práctico", "Versátil", "Top Ventas"]
+    for i in range(visible):
+        y   = y_start + i*(bh+gap)
+        a   = min(alpha, 255)
+        col = acc if i%2==0 else acc2
+        # Pill fondo
+        draw.rounded_rectangle([pad, y, WIDTH-pad, y+bh], radius=27,
+                                fill=(col[0],col[1],col[2], int(35*a/255)))
+        # Borde izquierdo
+        draw.rounded_rectangle([pad, y, pad+7, y+bh], radius=4,
+                                fill=(*col, a))
+        draw.text((pad+28, y+bh//2), BENEFICIOS[i], font=font,
+                  fill=(255,255,255,a), anchor="lm")
 
+# ── Tags ──────────────────────────────────────────────────────────────────────
 def _draw_tags(draw, alpha=255):
-    acc = PALETA["accent"]
+    acc  = PALETA["accent"]
     acc2 = PALETA["accent2"]
-    font = _font(28)
-    x_positions = [140, 360, 580, 800]
-    y = HEIGHT // 2 + 240
-    for i, (tag, xc) in enumerate(zip(TAGS, x_positions)):
-        a = min(alpha, 255)
-        col = acc if i % 2 == 0 else acc2
-        tw_half = 70
-        draw.rounded_rectangle([xc - tw_half, y - 20, xc + tw_half, y + 28],
-                                radius=16, fill=(*col, int(200 * a / 255)))
-        draw.text((xc, y + 4), tag, font=font, fill=(15, 15, 15, a), anchor="mm")
+    font = _font(26)
+    y    = HEIGHT - 295
+    tag_w = (WIDTH-80)//4
+    x0    = 40
+
+    for i, tag in enumerate(TAGS):
+        a   = min(alpha, 255)
+        col = acc if i%2==0 else acc2
+        cx  = x0 + i*tag_w + tag_w//2
+        tw  = tag_w - 14
+        draw.rounded_rectangle([cx-tw//2, y-22, cx+tw//2, y+26],
+                                radius=15, fill=(*col, int(215*a/255)))
+        draw.text((cx, y+2), tag, font=font, fill=(10,10,20,a), anchor="mm")
+
+# ── Nombre del producto ───────────────────────────────────────────────────────
+def _draw_product_name(draw, name, alpha=255):
+    font  = _font_r(27)
+    max_w = WIDTH - 100
+    words = name.split()
+    lines, line = [], ""
+    for w in words:
+        test = (line+" "+w).strip()
+        bbox = draw.textbbox((0,0), test, font=font)
+        if bbox[2]-bbox[0] <= max_w:
+            line = test
+        else:
+            if line: lines.append(line)
+            line = w
+    if line: lines.append(line)
+    lines = lines[:2]
+    y = HEIGHT - 265
+    for ln in lines:
+        draw.text((WIDTH//2, y), ln, font=font,
+                  fill=(210,210,210,min(alpha,180)), anchor="mm")
+        y += 36
 
 # ── CTA ───────────────────────────────────────────────────────────────────────
 def _draw_cta(draw, pulse=1.0, alpha=255):
-    acc = PALETA["accent"]
-    acc2 = PALETA["accent2"]
-    bw = int(500 * pulse)
-    bh = 72
-    bx = (WIDTH - bw) // 2
-    by = HEIGHT - 160
-    a = min(alpha, 255)
-    draw.rounded_rectangle([bx - 8, by - 8, bx + bw + 8, by + bh + 8],
-                            radius=42, fill=(*acc, int(60 * a / 255)))
-    draw.rounded_rectangle([bx, by, bx + bw, by + bh],
-                            radius=36, fill=(*acc, a))
-    font = _font(34)
-    draw.text((WIDTH // 2, by + bh // 2), "👉  Compra Ahora en Amazon",
-              font=font, fill=(15, 15, 15, 255), anchor="mm")
-    fw = _font(26)
-    draw.text((WIDTH // 2, HEIGHT - 60), "To-do en Uno  •  @impulso_dijital",
-              font=fw, fill=(255, 255, 255, 70), anchor="mm")
+    acc  = PALETA["accent"]
+    bw   = int(620*pulse)
+    bh   = 78
+    bx   = (WIDTH-bw)//2
+    by   = HEIGHT - 135
+    a    = min(alpha, 255)
+    draw.rounded_rectangle([bx-12, by-12, bx+bw+12, by+bh+12],
+                            radius=50, fill=(*acc, int(45*a/255)))
+    draw.rounded_rectangle([bx, by, bx+bw, by+bh],
+                            radius=39, fill=(*acc, a))
+    draw.rounded_rectangle([bx+20, by+5, bx+bw-20, by+16],
+                            radius=8,  fill=(255,255,255, int(45*a/255)))
+    font = _font(37)
+    draw.text((WIDTH//2, by+bh//2), "🛒  Compra Ahora en Amazon",
+              font=font, fill=(10,10,20,255), anchor="mm")
 
-# ── Producto centrado con zoom/float ─────────────────────────────────────────
-def _paste_product(canvas, prod_img, scale=1.0, float_y=0):
-    size = int(420 * scale)
-    prod = prod_img.copy()
-    prod.thumbnail((size, size), Image.LANCZOS)
-    pw, ph = prod.size
-    px = (WIDTH - pw) // 2
-    py = (HEIGHT - ph) // 2 - 60 + float_y
-    shadow = Image.new("RGBA", (pw + 40, ph + 40), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
-    sd.ellipse([10, ph - 10, pw + 30, ph + 35], fill=(0, 0, 0, 60))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(12))
-    canvas.paste(shadow, (px - 20, py - 20), shadow)
-    canvas.paste(prod, (px, py), prod)
+# ── Watermark ─────────────────────────────────────────────────────────────────
+def _draw_watermark(draw):
+    font = _font_r(22)
+    draw.text((WIDTH//2, HEIGHT-18), "To-do en Uno  •  @impulso_dijital",
+              font=font, fill=(255,255,255,60), anchor="mm")
 
-# ── GENERADOR PRINCIPAL DE FRAMES ────────────────────────────────────────────
-def _ease_in_out(t):
-    return t * t * (3 - 2 * t)
+# ── Ease ──────────────────────────────────────────────────────────────────────
+def _ease_out(t):      return 1-(1-t)**3
+def _ease_in_out(t):   return t*t*(3-2*t)
 
+# ── GENERADOR PRINCIPAL ───────────────────────────────────────────────────────
 def create_animated_gif(product_name, image_url):
-    print("🎬 Generando GIF animado...", flush=True)
+    print("🎬 Generando GIF animado profesional...", flush=True)
 
     prod_img = _download(image_url)
     if prod_img is None:
         print("❌ No se pudo descargar imagen", flush=True)
         return None
 
-    # Preparar imagen del producto con fondo transparente
-    prod_img = prod_img.convert("RGBA")
+    prod_img  = prod_img.convert("RGBA")
+    hook_text = random.choice(HOOKS)
 
-    gif_frames = []  # solo guardamos PIL Images, no numpy arrays
-    FPS = 10
-    FASE = [
-        ("hook",        int(1.5 * FPS)),
-        ("producto",    int(2.0 * FPS)),
-        ("beneficios",  int(2.5 * FPS)),
-        ("tags",        int(1.5 * FPS)),
-        ("cta",         int(2.0 * FPS)),
+    gif_frames = []
+    FPS  = 10
+    FASES = [
+        ("hook",       int(1.5*FPS)),
+        ("producto",   int(2.0*FPS)),
+        ("beneficios", int(2.5*FPS)),
+        ("tags",       int(1.5*FPS)),
+        ("cta",        int(2.0*FPS)),
     ]
+    total_frames = sum(n for _,n in FASES)
 
-    total_frames = sum(n for _, n in FASE)
-    frame_idx = 0
-
-    hooks = ["¡Esto te va a encantar! 🔥", "¡Descubre lo nuevo! ✨", "¡No te lo pierdas! 👀"]
-    hook_text = random.choice(hooks)
-
-    for fase_name, n_frames in FASE:
+    for fase_name, n_frames in FASES:
         for fi in range(n_frames):
-            t = fi / max(n_frames - 1, 1)
-            et = _ease_in_out(t)
+            t  = fi / max(n_frames-1, 1)
+            et = _ease_out(t)
+            ei = _ease_in_out(t)
 
             canvas = _make_bg()
-            draw = ImageDraw.Draw(canvas)
-
-            _draw_deco(draw, progress=1.0)
-            _draw_badge(draw, alpha=255)
+            draw   = ImageDraw.Draw(canvas)
+            _draw_frame(draw)
+            _draw_watermark(draw)
 
             if fase_name == "hook":
-                alpha = int(255 * et) if t < 0.5 else 255
-                _draw_hook(draw, hook_text, alpha)
-                _paste_product(canvas, prod_img, scale=0.6 + 0.1 * et, float_y=0)
+                ha = int(255*et)
+                _draw_badge(draw, alpha=ha)
+                _draw_hook(draw, hook_text, ha, scale=0.65+0.35*et)
+                _paste_product(canvas, prod_img, scale=0.55+0.25*et,
+                               float_y=int(18*(1-et)), glow=False)
 
             elif fase_name == "producto":
-                _draw_hook(draw, hook_text, alpha=80)
-                scale = 0.7 + 0.3 * et
-                float_y = int(-15 * np.sin(t * np.pi))
-                _paste_product(canvas, prod_img, scale=scale, float_y=float_y)
+                fy = int(-14*math.sin(t*math.pi*2))
+                _draw_badge(draw, alpha=255)
+                _draw_hook(draw, hook_text, alpha=55)
+                _paste_product(canvas, prod_img, scale=0.94, float_y=fy, glow=True)
 
             elif fase_name == "beneficios":
-                float_y = int(-10 * np.sin(t * 2 * np.pi))
-                _paste_product(canvas, prod_img, scale=0.72, float_y=float_y - 60)
-                visible = max(1, int(et * 4) + 1)
-                alpha = int(255 * min(t * 3, 1.0))
-                _draw_beneficios(draw, visible=visible, alpha=alpha)
+                ps  = 0.94 - 0.27*ei
+                fy  = int(-10*math.sin(t*math.pi*2)) - int(85*ei)
+                vis = max(1, int(ei*4)+1)
+                ba  = int(255*min(t*2.5, 1.0))
+                _draw_badge(draw, alpha=255)
+                _paste_product(canvas, prod_img, scale=ps, float_y=fy, glow=True)
+                _draw_beneficios(draw, visible=vis, alpha=ba)
 
             elif fase_name == "tags":
-                _paste_product(canvas, prod_img, scale=0.65, float_y=-70)
-                alpha = int(255 * et)
-                _draw_tags(draw, alpha=alpha)
-                _draw_beneficios(draw, visible=4, alpha=120)
+                fy = int(-8*math.sin(t*math.pi*2)) - 85
+                ta = int(255*et)
+                _draw_badge(draw, alpha=255)
+                _paste_product(canvas, prod_img, scale=0.67, float_y=fy, glow=True)
+                _draw_beneficios(draw, visible=4, alpha=155)
+                _draw_tags(draw, alpha=ta)
 
             elif fase_name == "cta":
-                _paste_product(canvas, prod_img, scale=0.60, float_y=-80)
-                _draw_beneficios(draw, visible=4, alpha=80)
-                pulse = 1.0 + 0.04 * np.sin(t * 4 * np.pi)
-                alpha = int(255 * min(t * 2, 1.0))
-                _draw_cta(draw, pulse=pulse, alpha=alpha)
-                font_name = _font(26)
-                name_short = product_name[:55] + ("..." if len(product_name) > 55 else "")
-                draw.text((WIDTH // 2, HEIGHT - 195), name_short,
-                          font=font_name, fill=(220, 220, 220, 180), anchor="mm")
+                fy    = int(-6*math.sin(t*math.pi*2)) - 85
+                pulse = 1.0 + 0.03*math.sin(t*math.pi*4)
+                ca    = int(255*min(t*2, 1.0))
+                _draw_badge(draw, alpha=255)
+                _paste_product(canvas, prod_img, scale=0.60, float_y=fy, glow=True)
+                _draw_beneficios(draw, visible=4, alpha=90)
+                _draw_product_name(draw, product_name, alpha=ca)
+                _draw_cta(draw, pulse=pulse, alpha=ca)
 
-            # Guardar como PIL Image reducida en paleta para ahorrar RAM
-            rgb = canvas.convert("RGB").convert("P", palette=Image.ADAPTIVE, colors=128)
-            gif_frames.append(rgb)
-            frame_idx += 1
+            frame_p = canvas.convert("RGB").convert("P", palette=Image.ADAPTIVE, colors=128)
+            gif_frames.append(frame_p)
 
-        print(f"  ✅ Fase '{fase_name}' completada ({n_frames} frames)", flush=True)
+        print(f"  ✅ Fase '{fase_name}' ({n_frames} frames)", flush=True)
 
-    # Guardar GIF usando Pillow directamente (sin numpy, mucho menos RAM)
-    out_path = tempfile.mktemp(suffix=".gif")
-    duration_ms = int(1000 / FPS)
+    out_path    = tempfile.mktemp(suffix=".gif")
+    duration_ms = int(1000/FPS)
 
     gif_frames[0].save(
         out_path,
@@ -300,16 +358,13 @@ def create_animated_gif(product_name, image_url):
         loop=0,
         optimize=True,
     )
-
-    # Liberar memoria inmediatamente
     gif_frames.clear()
 
-    size_kb = os.path.getsize(out_path) // 1024
-    print(f"✅ GIF listo: {size_kb}KB | {total_frames} frames | ~{total_frames // FPS}s", flush=True)
+    size_kb = os.path.getsize(out_path)//1024
+    print(f"✅ GIF listo: {size_kb}KB | {total_frames} frames | ~{total_frames//FPS}s", flush=True)
     return out_path
 
 
-# ── Punto de entrada ──────────────────────────────────────────────────────────
 def generate_image(product_name, image_url=None):
     if not image_url:
         return None, None
