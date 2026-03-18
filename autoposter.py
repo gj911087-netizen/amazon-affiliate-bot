@@ -46,7 +46,7 @@ def post_image_to_instagram(text, image_url):
         if not media_id:
             print("❌ Error Instagram (crear): " + str(result), flush=True)
             return
-        time.sleep(3)
+        time.sleep(3600)
         publish_url = f"https://graph.facebook.com/v18.0/{INSTAGRAM_ACCOUNT_ID}/media_publish"
         response = requests.post(publish_url, data={
             "creation_id":  media_id,
