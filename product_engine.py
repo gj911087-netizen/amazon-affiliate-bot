@@ -4,16 +4,78 @@ import re
 import time
 from config import PRODUCT_LIMIT
 
-# ── Categorías SEPARADAS para máxima variedad ────────────────────────────────
+# ── Categorías EXPANDIDAS con múltiples URLs por categoría ───────────────────
 CATEGORIAS = {
-    "Utensilios cocina":  "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289857",
-    "Gadgets cocina":     "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/284507",
-    "Café y bebidas":     "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/3741421",
-    "Organización":       "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733781",
-    "Ropa de cama":       "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063498",
-    "Baño":               "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063306",
-    "Limpieza":           "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3732961",
-    "Electrodomésticos":  "https://www.amazon.com/Best-Sellers-Home-Kitchen-Small-Appliances/zgbs/appliances/",
+    "Utensilios cocina": [
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289857",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289913",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289914",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289905",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289906",
+    ],
+    "Gadgets cocina": [
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/284507",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/3741451",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/3741461",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/372791011",
+    ],
+    "Café y bebidas": [
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/3741421",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/678508011",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/3741431",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/16225927011",
+    ],
+    "Organización hogar": [
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733781",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3734001",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733911",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733901",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733971",
+    ],
+    "Ropa de cama": [
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063498",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3031022011",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/404276011",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063506",
+    ],
+    "Baño": [
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063306",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/13887101",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063308",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3031042011",
+    ],
+    "Limpieza": [
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3732961",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733041",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3733071",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3732981",
+    ],
+    "Electrodomésticos": [
+        "https://www.amazon.com/Best-Sellers-Home-Kitchen-Small-Appliances/zgbs/appliances/",
+        "https://www.amazon.com/Best-Sellers-Home-Kitchen-Small-Appliances/zgbs/appliances/510938",
+        "https://www.amazon.com/Best-Sellers-Home-Kitchen-Small-Appliances/zgbs/appliances/510946",
+        "https://www.amazon.com/Best-Sellers-Home-Kitchen-Small-Appliances/zgbs/appliances/510942",
+    ],
+    "Almacenamiento cocina": [
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289887",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/289888",
+        "https://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/3741381",
+    ],
+    "Iluminación": [
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063338",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/1063340",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/526676",
+    ],
+    "Decoración hogar": [
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3732871",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3732881",
+        "https://www.amazon.com/Best-Sellers-Home-Garden/zgbs/garden/3732891",
+    ],
+    "Jardín y exterior": [
+        "https://www.amazon.com/Best-Sellers-Patio-Lawn-Garden/zgbs/lawn-garden/",
+        "https://www.amazon.com/Best-Sellers-Patio-Lawn-Garden/zgbs/lawn-garden/3238155011",
+        "https://www.amazon.com/Best-Sellers-Patio-Lawn-Garden/zgbs/lawn-garden/2972638011",
+    ],
 }
 
 USER_AGENTS = [
@@ -32,7 +94,6 @@ BLACKLIST_KEYWORDS = [
     "napkin", "tissue", "toilet paper", "disposable", "glove", "mask",
 ]
 
-# Palabras similares — evitar repetir misma SUBCATEGORÍA
 SIMILAR_GROUPS = [
     ["paper towel", "napkin", "tissue", "toilet"],
     ["coffee pod", "k-cup", "nespresso", "coffee capsule"],
@@ -62,12 +123,9 @@ def _is_valid_product(title):
     return True
 
 def _is_similar_to_existing(title, existing_titles):
-    """Evita productos de la misma subcategoría."""
     title_lower = title.lower()
     for group in SIMILAR_GROUPS:
-        # Si el nuevo producto pertenece a este grupo
         if any(kw in title_lower for kw in group):
-            # Verificar si ya hay uno de ese grupo en los existentes
             for existing in existing_titles:
                 existing_lower = existing.lower()
                 if any(kw in existing_lower for kw in group):
@@ -127,60 +185,87 @@ def get_asins_from_bestsellers(url):
     return []
 
 
-def find_products():
+def find_products(seen_asins_global=None):
+    """
+    seen_asins_global: set de ASINs ya usados (vendrían de Supabase).
+    Si no se pasa, se crea uno vacío.
+    """
+    if seen_asins_global is None:
+        seen_asins_global = set()
+
     while True:
         clean_products  = []
-        seen_asins      = set()
+        seen_asins_session = set()
         existing_titles = []
 
-        # Tomar categorías aleatorias SIN repetir
+        # Expandir: por cada categoría, elegir una URL aleatoria distinta
+        # y además intentar con MÚLTIPLES URLs si la primera no da variedad
         cats = list(CATEGORIAS.items())
         random.shuffle(cats)
 
-        for cat_name, url in cats:
+        for cat_name, urls in cats:
             if len(clean_products) >= PRODUCT_LIMIT:
                 break
 
             print(f"🏷️ Categoría: {cat_name}", flush=True)
-            asins = get_asins_from_bestsellers(url)
-            if not asins:
-                continue
 
-            random.shuffle(asins)
+            # Mezclar las URLs de esta categoría para no repetir siempre la primera
+            urls_shuffled = urls.copy()
+            random.shuffle(urls_shuffled)
+
             encontrado = False
-
-            for asin in asins[:15]:
-                if len(clean_products) >= PRODUCT_LIMIT:
+            for url in urls_shuffled:
+                if encontrado:
                     break
-                if asin in seen_asins:
+
+                asins = get_asins_from_bestsellers(url)
+                if not asins:
                     continue
 
-                print(f"🔍 Obteniendo detalles: {asin}", flush=True)
-                title, image = get_product_details(asin)
+                # Mezclar para no tomar siempre el top-1
+                random.shuffle(asins)
 
-                if not title or not image:
-                    print(f"⚠️ Sin datos para {asin}, saltando...", flush=True)
+                # Saltar los que ya están en Supabase o en esta sesión
+                asins_filtrados = [
+                    a for a in asins
+                    if a not in seen_asins_global and a not in seen_asins_session
+                ]
+
+                if not asins_filtrados:
+                    print(f"🔁 Todos los ASINs de esta URL ya fueron usados, probando otra URL...", flush=True)
                     continue
 
-                if not _is_valid_product(title):
-                    print(f"⛔ Fuera de categoría: {title[:50]}", flush=True)
-                    continue
+                # Intentar hasta 25 ASINs antes de rendirse con esta URL
+                for asin in asins_filtrados[:25]:
+                    if len(clean_products) >= PRODUCT_LIMIT:
+                        break
 
-                if _is_similar_to_existing(title, existing_titles):
-                    print(f"🔁 Similar a uno existente, saltando: {title[:50]}", flush=True)
-                    continue
+                    print(f"🔍 Obteniendo detalles: {asin}", flush=True)
+                    title, image = get_product_details(asin)
 
-                clean_products.append({
-                    "asin":          asin,
-                    "product_title": title,
-                    "product_photo": image,
-                    "categoria":     cat_name,
-                })
-                seen_asins.add(asin)
-                existing_titles.append(title)
-                print(f"✅ [{cat_name}] {asin} | {title[:45]}", flush=True)
-                encontrado = True
-                break  # 1 producto por categoría — máxima variedad
+                    if not title or not image:
+                        print(f"⚠️ Sin datos para {asin}, saltando...", flush=True)
+                        continue
+
+                    if not _is_valid_product(title):
+                        print(f"⛔ Fuera de categoría: {title[:50]}", flush=True)
+                        continue
+
+                    if _is_similar_to_existing(title, existing_titles):
+                        print(f"🔁 Similar a uno existente, saltando: {title[:50]}", flush=True)
+                        continue
+
+                    clean_products.append({
+                        "asin":          asin,
+                        "product_title": title,
+                        "product_photo": image,
+                        "categoria":     cat_name,
+                    })
+                    seen_asins_session.add(asin)
+                    existing_titles.append(title)
+                    print(f"✅ [{cat_name}] {asin} | {title[:45]}", flush=True)
+                    encontrado = True
+                    break  # 1 producto por categoría — máxima variedad
 
         if clean_products:
             print(f"✅ Total productos variados: {len(clean_products)}", flush=True)
