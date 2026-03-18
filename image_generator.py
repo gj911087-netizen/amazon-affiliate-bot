@@ -92,13 +92,17 @@ def _draw_deco(draw, progress=1.0):
     # Línea inferior
     draw.rectangle([x0, HEIGHT - 34, x0 + w, HEIGHT - 28], fill=(*acc, 200))
     draw.rectangle([x0 + 10, HEIGHT - 41, x0 + w - 10, HEIGHT - 38], fill=(*acc2, 120))
-    # Esquinas
+    # Esquinas — coordenadas siempre ordenadas (min, max)
     corner = 60
     thick = 6
     for x, y, dx, dy in [(30, 30, 1, 1), (WIDTH - 30, 30, -1, 1),
                           (30, HEIGHT - 30, 1, -1), (WIDTH - 30, HEIGHT - 30, -1, -1)]:
-        draw.rectangle([x, y, x + dx * corner, y + dy * thick], fill=(*acc, 180))
-        draw.rectangle([x, y, x + dx * thick, y + dy * corner], fill=(*acc, 180))
+        x1a, x2a = sorted([x, x + dx * corner])
+        y1a, y2a = sorted([y, y + dy * thick])
+        draw.rectangle([x1a, y1a, x2a, y2a], fill=(*acc, 180))
+        x1b, x2b = sorted([x, x + dx * thick])
+        y1b, y2b = sorted([y, y + dy * corner])
+        draw.rectangle([x1b, y1b, x2b, y2b], fill=(*acc, 180))
 
 # ── Badge "HOGAR & COCINA" ─────────────────────────────────────────────────────
 def _draw_badge(draw, alpha=255):
