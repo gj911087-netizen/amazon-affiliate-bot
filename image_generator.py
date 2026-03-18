@@ -78,7 +78,7 @@ def _download(url):
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         img = Image.open(BytesIO(r.content)).convert("RGBA")
-        img = _remove_white_bg(img)
+        # img = _remove_white_bg(img)  # desactivado — imagen original de Amazon
         return img
     except Exception as e:
         print("⚠️ Error imagen: " + str(e), flush=True)
@@ -270,7 +270,7 @@ def _draw_hook_text(draw, hook, alpha=255):
 
 # ── Producto GRANDE al centro-derecha ────────────────────────────────────────
 def _paste_product(canvas, prod_img, scale=1.0, float_y=0, glow=True):
-    max_size = int(950 * scale)  # producto MÁS GRANDE
+    max_size = int(950 * scale)  # producto grande  # producto MÁS GRANDE
     prod     = prod_img.copy()
     prod.thumbnail((max_size, max_size), Image.LANCZOS)
     pw, ph   = prod.size
