@@ -6,10 +6,9 @@ from config import (
     INSTAGRAM_TOKEN, INSTAGRAM_ACCOUNT_ID
 )
 
-
 # ── Facebook ──────────────────────────────────────────────────────────────────
 def post_image_to_facebook(text, image_path):
-    """Publica imagen en Facebook subiendo el archivo directamente."""
+    """Publica imagen/GIF en Facebook subiendo el archivo directamente."""
     try:
         url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/photos"
         with open(image_path, "rb") as f:
@@ -25,12 +24,12 @@ def post_image_to_facebook(text, image_path):
     except Exception as e:
         print("❌ Error Facebook: " + str(e), flush=True)
 
-
 # ── Instagram ─────────────────────────────────────────────────────────────────
 def post_image_to_instagram(text, image_url):
     """
     Publica imagen en Instagram usando la URL publica de Amazon.
     Instagram requiere URL publica https:// — la imagen de Amazon ya lo es.
+    NOTA: Instagram no acepta GIFs directamente, usamos la imagen original de Amazon.
     """
     if not image_url or not image_url.startswith("https://"):
         print("⚠️ Instagram: sin URL publica de imagen", flush=True)
@@ -44,13 +43,10 @@ def post_image_to_instagram(text, image_url):
         })
         result   = response.json()
         media_id = result.get("id")
-
         if not media_id:
             print("❌ Error Instagram (crear): " + str(result), flush=True)
             return
-
         time.sleep(3)
-
         publish_url = f"https://graph.facebook.com/v18.0/{INSTAGRAM_ACCOUNT_ID}/media_publish"
         response = requests.post(publish_url, data={
             "creation_id":  media_id,
@@ -61,18 +57,17 @@ def post_image_to_instagram(text, image_url):
             print("✅ Publicado en Instagram: " + result["id"], flush=True)
         else:
             print("❌ Error Instagram publicar: " + str(result), flush=True)
-
     except Exception as e:
         print("❌ Error Instagram: " + str(e), flush=True)
-
 
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 def post_to_social(text, media=None, amazon_image_url=None):
     """
-    media            = ("image", "/tmp/archivo.jpg")
-    amazon_image_url = URL publica de Amazon para Instagram
-    Facebook recibe el archivo local con fondo y badge.
-    Instagram recibe la URL publica de Amazon directamente.
+    media            = ("gif", "/tmp/archivo.gif")  ← nuevo tipo GIF
+    amazon_image_url = URL publica de Amazon para Instagram (no acepta GIFs)
+
+    Facebook: recibe el GIF animado directamente → se ve animado en el feed ✅
+    Instagram: recibe la URL de Amazon como imagen estática (limitación de la API) ✅
     """
     print("📤 Publicando en redes sociales...", flush=True)
 
@@ -86,13 +81,15 @@ def post_to_social(text, media=None, amazon_image_url=None):
         print("⚠️ Archivo no encontrado: " + str(media_path), flush=True)
         return
 
-    if media_type == "image":
+    # GIF → Facebook lo muestra animado, Instagram recibe imagen original de Amazon
+    if media_type in ("image", "gif"):
         post_image_to_facebook(text, media_path)
         if amazon_image_url:
             post_image_to_instagram(text, amazon_image_url)
         else:
             print("⚠️ Sin URL de Amazon para Instagram", flush=True)
 
+    # Limpiar archivo temporal
     try:
         os.remove(media_path)
         print("🗑️ Archivo temporal eliminado", flush=True)
