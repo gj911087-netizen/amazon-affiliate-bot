@@ -61,24 +61,12 @@ def _font_r(size):
             except: pass
     return _font(size)
 
-def _remove_white_bg(img, threshold=240):
-    """Elimina fondo blanco/claro de la imagen del producto."""
-    img = img.convert("RGBA")
-    data = np.array(img)
-    r, g, b, a = data[:,:,0], data[:,:,1], data[:,:,2], data[:,:,3]
-    # Pixels blancos/casi blancos → transparente
-    white_mask = (r > threshold) & (g > threshold) & (b > threshold)
-    data[white_mask, 3] = 0
-    # Suavizar bordes — pixels grises claros semi-transparentes
-    near_white = (r > 200) & (g > 200) & (b > 200) & ~white_mask
-    data[near_white, 3] = (data[near_white, 3] * 0.4).astype(np.uint8)
-    return Image.fromarray(data)
 
 def _download(url):
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         img = Image.open(BytesIO(r.content)).convert("RGBA")
-        # img = _remove_white_bg(img)  # desactivado — imagen original de Amazon
+        #   # desactivado — imagen original de Amazon
         return img
     except Exception as e:
         print("⚠️ Error imagen: " + str(e), flush=True)
