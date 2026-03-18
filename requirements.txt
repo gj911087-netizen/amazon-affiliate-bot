@@ -1,3 +1,6 @@
 requests
 Pillow
 groq
+imageio
+numpy
+ 
