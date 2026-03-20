@@ -3,8 +3,12 @@ import os
 import sys
 import random
 import requests as req_lib
+from datetime import datetime
+import pytz
+
 sys.stderr = sys.stdout
 print("INICIO", flush=True)
+
 try:
     from product_engine import find_products
     print("OK product_engine", flush=True)
@@ -35,11 +39,49 @@ HEADERS_SB = {
     "Prefer":        "return=minimal"
 }
 
+# ── Horas virales (Colombia UTC-5) ────────────────────────────────────────────
+# 7:00 AM  → gente despertando, revisa el cel
+# 12:00 PM → hora de almuerzo, máximo scroll
+# 7:00 PM  → llegaron a casa, tiempo libre
+# 9:00 PM  → pico máximo de engagement nocturno
+HORAS_VIRALES = [7, 12, 19, 21]
+ZONA_COLOMBIA = pytz.timezone("America/Bogota")
+
+def hora_actual_colombia():
+    return datetime.now(ZONA_COLOMBIA).hour
+
+def minuto_actual_colombia():
+    return datetime.now(ZONA_COLOMBIA).minute
+
+def es_hora_viral():
+    """Retorna True si estamos en una hora viral (en punto)."""
+    hora   = hora_actual_colombia()
+    minuto = minuto_actual_colombia()
+    return hora in HORAS_VIRALES and minuto == 0
+
+def segundos_para_proxima_hora_viral():
+    """Calcula cuántos segundos faltan para la siguiente hora viral."""
+    ahora      = datetime.now(ZONA_COLOMBIA)
+    hora_actual = ahora.hour
+    minuto_actual = ahora.minute
+    segundo_actual = ahora.second
+
+    # Buscar la próxima hora viral
+    for h in sorted(HORAS_VIRALES):
+        if h > hora_actual or (h == hora_actual and minuto_actual == 0):
+            if h > hora_actual:
+                segundos = (h - hora_actual) * 3600 - minuto_actual * 60 - segundo_actual
+                return max(segundos, 1)
+
+    # Si ya pasaron todas las horas virales de hoy, esperar a las 7am del día siguiente
+    proxima = (24 - hora_actual + HORAS_VIRALES[0]) * 3600 - minuto_actual * 60 - segundo_actual
+    return max(proxima, 1)
+
+# ── Supabase helpers ──────────────────────────────────────────────────────────
 def load_history():
-    """Carga todos los ASINs publicados desde Supabase."""
     try:
-        url = f"{SUPABASE_URL}/rest/v1/posted_products?select=asin"
-        r   = req_lib.get(url, headers=HEADERS_SB, timeout=10)
+        url  = f"{SUPABASE_URL}/rest/v1/posted_products?select=asin"
+        r    = req_lib.get(url, headers=HEADERS_SB, timeout=10)
         data = r.json()
         asins = set(row["asin"] for row in data if "asin" in row)
         print(f"📋 Historial Supabase: {len(asins)} productos publicados", flush=True)
@@ -49,7 +91,6 @@ def load_history():
         return set()
 
 def save_to_history(asin, product_name):
-    """Guarda el ASIN publicado en Supabase."""
     try:
         url  = f"{SUPABASE_URL}/rest/v1/posted_products"
         body = {"asin": asin, "product_name": product_name[:200]}
@@ -62,7 +103,6 @@ def save_to_history(asin, product_name):
         print(f"⚠️ Error guardando en Supabase: {e}", flush=True)
 
 def clear_history():
-    """Borra todo el historial cuando ya se publicaron todos."""
     try:
         url = f"{SUPABASE_URL}/rest/v1/posted_products?asin=neq.null"
         r   = req_lib.delete(url, headers=HEADERS_SB, timeout=10)
@@ -70,51 +110,65 @@ def clear_history():
     except Exception as e:
         print(f"⚠️ Error borrando historial: {e}", flush=True)
 
-# ── Bot ───────────────────────────────────────────────────────────────────────
-print("🤖 Bot ejecutándose...", flush=True)
-try:
-    posted_asins = load_history()
+# ── Publicar un producto ──────────────────────────────────────────────────────
+def publicar():
+    print(f"\n🚀 Publicando a las {hora_actual_colombia()}:00 hora Colombia", flush=True)
+    try:
+        posted_asins = load_history()
+        products     = find_products()
 
-    products = find_products()
-    if not products:
-        print("⚠️ Sin productos disponibles", flush=True)
-        sys.exit(0)
+        if not products:
+            print("⚠️ Sin productos disponibles", flush=True)
+            return
 
-    nuevos = [p for p in products if p.get("asin") not in posted_asins]
-    print(f"🆕 Productos nuevos: {len(nuevos)} de {len(products)}", flush=True)
+        nuevos = [p for p in products if p.get("asin") not in posted_asins]
+        print(f"🆕 Productos nuevos: {len(nuevos)} de {len(products)}", flush=True)
 
-    if not nuevos:
-        print("🔄 Todos publicados, reiniciando historial...", flush=True)
-        clear_history()
-        nuevos = products
+        if not nuevos:
+            print("🔄 Todos publicados, reiniciando historial...", flush=True)
+            clear_history()
+            nuevos = products
 
-    product   = random.choice(nuevos)
-    asin      = product.get("asin")
-    name      = product.get("product_title", "Producto Amazon")
-    image_url = product.get("product_photo")
+        product   = random.choice(nuevos)
+        asin      = product.get("asin")
+        name      = product.get("product_title", "Producto Amazon")
+        image_url = product.get("product_photo")
 
-    if not asin or not image_url:
-        print("⚠️ Producto sin ASIN o imagen", flush=True)
-        sys.exit(0)
+        if not asin or not image_url:
+            print("⚠️ Producto sin ASIN o imagen", flush=True)
+            return
 
-    print(f"🔎 Procesando: {name}", flush=True)
-    print(f"🖼️ Imagen: {image_url}", flush=True)
+        print(f"🔎 Procesando: {name}", flush=True)
+        print(f"🖼️ Imagen: {image_url}", flush=True)
 
-    link  = generate_affiliate_link(asin)
-    text  = generate_marketing_text(name, link)
-    media = generate_image(name, image_url)
+        link  = generate_affiliate_link(asin)
+        text  = generate_marketing_text(name, link)
+        media = generate_image(name, image_url)
 
-    post_to_social(text, media, amazon_image_url=image_url)
-    log_post(name, link)
+        post_to_social(text, media, amazon_image_url=image_url)
+        log_post(name, link)
+        save_to_history(asin, name)
 
-    # Guardar en Supabase — persiste aunque Render reinicie
-    save_to_history(asin, name)
+        media_type = media[0] if media else "unknown"
+        print(f"✅ Publicado ({media_type}): {name}", flush=True)
 
-    media_type = media[0] if media else "unknown"
-    print(f"✅ Publicado ({media_type}): {name}", flush=True)
+    except Exception as e:
+        print(f"❌ Error publicando: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
-except Exception as e:
-    print(f"❌ Error: {e}", flush=True)
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+# ── Loop principal ────────────────────────────────────────────────────────────
+print("🤖 Bot ejecutándose con horario viral...", flush=True)
+print(f"⏰ Horas programadas (Colombia): {HORAS_VIRALES}", flush=True)
+
+while True:
+    if es_hora_viral():
+        publicar()
+        # Esperar 61 segundos para no publicar dos veces en el mismo minuto
+        time.sleep(61)
+    else:
+        espera = segundos_para_proxima_hora_viral()
+        hora   = hora_actual_colombia()
+        print(f"⏳ Son las {hora}h Colombia. Próxima publicación en {espera//3600}h {(espera%3600)//60}m", flush=True)
+        # Revisar cada 30 segundos
+        time.sleep(30)
